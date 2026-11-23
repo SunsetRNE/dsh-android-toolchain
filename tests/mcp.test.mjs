@@ -18,6 +18,7 @@ function startBroker() {
   })
   let buffer = ''
   const pending = new Map()
+  const notifications = []
   child.stdout.on('data', (chunk) => {
     buffer += chunk.toString()
     let index
@@ -26,8 +27,11 @@ function startBroker() {
       buffer = buffer.slice(index + 1)
       if (!line.trim()) continue
       const message = JSON.parse(line)
-      pending.get(message.id)?.(message)
-      pending.delete(message.id)
+      if (message.id === undefined) notifications.push(message)
+      else {
+        pending.get(message.id)?.(message)
+        pending.delete(message.id)
+      }
     }
   })
   let nextId = 1
@@ -41,7 +45,8 @@ function startBroker() {
       })
       child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`)
     })
-  return { child, request }
+  const notify = (method, params) => child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method, params })}\n`)
+  return { child, request, notify, notifications }
 }
 
 test('broker speaks MCP: initialize, tools/list, tools/call', async () => {
@@ -49,7 +54,7 @@ test('broker speaks MCP: initialize, tools/list, tools/call', async () => {
   try {
     const initialized = await request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } })
     assert.equal(initialized.result.protocolVersion, '2025-06-18')
-    assert.deepEqual(initialized.result.capabilities.tools, { listChanged: false })
+    assert.deepEqual(initialized.result.capabilities.tools, { listChanged: true })
 
     const listed = await request('tools/list', {})
     const names = listed.result.tools.map((tool) => tool.name).sort()
@@ -61,6 +66,18 @@ test('broker speaks MCP: initialize, tools/list, tools/call', async () => {
     const payload = JSON.parse(status.result.content[0].text)
     assert.equal(payload.root, root)
     assert.equal(payload.slot.limits.maxQueue, 3)
+  } finally {
+    child.kill('SIGKILL')
+  }
+})
+
+test('initialized triggers one tools/list_changed notification', async () => {
+  const { child, request, notify, notifications } = startBroker()
+  try {
+    await request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } })
+    notify('notifications/initialized')
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    assert.deepEqual(notifications.map((entry) => entry.method), ['notifications/tools/list_changed'])
   } finally {
     child.kill('SIGKILL')
   }

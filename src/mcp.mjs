@@ -30,7 +30,7 @@ export function serveStdio(server) {
       case 'initialize':
         return {
           protocolVersion: PROTOCOL_VERSION,
-          capabilities: { tools: { listChanged: false } },
+          capabilities: { tools: { listChanged: true } },
           serverInfo: { name: server.name, version: server.version },
           instructions: server.instructions,
         }
@@ -67,8 +67,13 @@ export function serveStdio(server) {
     } catch {
       return // client-side garbage: nothing to answer to
     }
-    // Notifications (no id) never get a response.
-    if (message?.id === undefined || message?.id === null) return
+    // Notifications (no id) never get a response. A client that just finished
+    // initializing gets one tools/list_changed so a server-version change
+    // (new tools) is picked up without restarting the client.
+    if (message?.id === undefined || message?.id === null) {
+      if (message?.method === 'notifications/initialized') send({ jsonrpc: '2.0', method: 'notifications/tools/list_changed' })
+      return
+    }
     try {
       send({ jsonrpc: '2.0', id: message.id, result: await dispatch(message.method, message.params) })
     } catch (error) {
