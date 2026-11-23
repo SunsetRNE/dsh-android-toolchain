@@ -1,22 +1,20 @@
 #!/bin/sh
-# End-to-end smoke. Three modes because the Android-only pieces cannot run on a
-# plain Linux arm64 host:
+# End-to-end smoke. Two modes because the APK path cannot run on a plain Linux
+# host:
 #
-#   sh scripts/smoke.sh                 # device: full (provision + APK + JUnit + arch)
-#   sh scripts/smoke.sh --jvm           # host: provision + JUnit + doctor (no APK)
-#   sh scripts/smoke.sh --apk-ci        # host: also build the APK, expecting the
-#                                       # Maven x86_64 aapt2 to run via qemu binfmt
+#   sh scripts/smoke.sh           # device: full (provision + APK + JUnit + arch)
+#   sh scripts/smoke.sh --jvm     # host: provision + JUnit + doctor (no APK)
 #
 # Why: the arm64 aapt2 we ship is Termux's bionic build and needs
 # /system/bin/linker64, which only exists on an Android device. GitHub's Ubuntu
-# arm64 runner has no Android userland, so `--jvm` is the guaranteed CI baseline
-# and `--apk-ci` is the (qemu-assisted) attempt at the full path.
+# arm64 runner has no Android userland, so `--jvm` is the CI baseline and the
+# APK path is gated by the full mode on a real device.
 set -eu
 
 MODE=${1:-device}
 case "$MODE" in
-  device|--jvm|--apk-ci) ;;
-  *) echo "usage: $0 [--jvm|--apk-ci]" >&2; exit 64 ;;
+  device|--jvm) ;;
+  *) echo "usage: $0 [--jvm]" >&2; exit 64 ;;
 esac
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -35,11 +33,10 @@ node bin/android-provision.mjs
 
 case "$MODE" in
   device) sh scripts/setup-apk.sh ;;
-  --apk-ci) sh scripts/setup-apk.sh --no-aapt2 ;;
   --jvm) sh scripts/setup-apk.sh --no-aapt2 ;;
 esac
 
-if [ "$MODE" = "device" ] || [ "$MODE" = "--apk-ci" ]; then
+if [ "$MODE" = "device" ]; then
   say "build the example APK"
   node bin/android-build.mjs assembleDebug --cwd examples/hello-apk --timeout 900000 --wait "$WAIT_MS"
   APK=examples/hello-apk/app/build/outputs/apk/debug/app-debug.apk

@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 /**
- * Non-agent entry point: `android-build [task...] [--cwd DIR] [--timeout ms]`.
+ * Non-agent entry point: `android-build [task...] [--cwd DIR] [--root ROOT]`.
  * Same slot and limits as the MCP tool, so cron jobs and other apps queue
  * behind agent builds instead of racing them.
+ *
+ * `--root` picks a registered root (by label) or an absolute path. Roots have
+ * separate locks and limits, so two roots can build at the same time.
  */
 import { existsSync } from 'node:fs'
 import { binPath, resolveRoot } from '../src/paths.mjs'
 import { buildEnv, withAapt2Override } from '../src/env.mjs'
 import { runInSlot } from '../src/slot.mjs'
+import { resolveRootRef } from '../src/roots.mjs'
 
 const argv = process.argv.slice(2)
 const value = (flag) => {
@@ -18,12 +22,20 @@ const value = (flag) => {
 }
 
 const cwd = value('--cwd')
+const rootRef = value('--root')
 const timeoutMs = Number(value('--timeout') ?? '')
 const waitMs = Number(value('--wait') ?? '')
 const owner = value('--owner') ?? `cli:${process.pid}`
 const tasks = argv.length ? argv : ['build']
 
-const root = resolveRoot({})
+let root
+try {
+  root = resolveRootRef(rootRef, { primary: resolveRoot({}) })
+} catch (error) {
+  console.error(`[android-build] ${error.message}`)
+  process.exit(1)
+}
+
 const gradle = binPath(root, 'gradle')
 if (!existsSync(gradle)) {
   console.error(`[android-build] gradle is not provisioned under ${root}; run android-provision`)

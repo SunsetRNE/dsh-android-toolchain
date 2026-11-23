@@ -66,6 +66,15 @@ test('broker speaks MCP: initialize, tools/list, tools/call', async () => {
     const payload = JSON.parse(status.result.content[0].text)
     assert.equal(payload.root, root)
     assert.equal(payload.slot.limits.maxQueue, 3)
+
+    // all:true lists the registry; with no registry file that is the primary root.
+    const all = await request('tools/call', { name: 'android_status', arguments: { all: true } })
+    const allPayload = JSON.parse(all.result.content[0].text)
+    assert.ok(allPayload.roots.some((entry) => entry.primary && entry.root === root))
+
+    const unknown = await request('tools/call', { name: 'android_status', arguments: { root: 'ghost' } })
+    assert.equal(unknown.result.isError, true)
+    assert.match(unknown.result.content[0].text, /unknown root "ghost"/)
   } finally {
     child.kill('SIGKILL')
   }

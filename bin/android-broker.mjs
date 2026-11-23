@@ -6,20 +6,19 @@
  *
  * stdout is the JSON-RPC channel: never print anything else here.
  */
-import { existsSync, readFileSync, readlinkSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { serveStdio } from '../src/mcp.mjs'
-import { binPath, currentPath, resolveRoot } from '../src/paths.mjs'
+import { binPath, resolveRoot } from '../src/paths.mjs'
 import { buildEnv, withAapt2Override } from '../src/env.mjs'
-import { readSlotState, runInSlot } from '../src/slot.mjs'
-import { loadLimits } from '../src/limits.mjs'
+import { runInSlot } from '../src/slot.mjs'
 import { doctor } from '../src/doctor.mjs'
+import { describeAllRoots, describeRoot } from '../src/inspect.mjs'
+import { registryPath, resolveRootRef } from '../src/roots.mjs'
 import { summarize } from '../src/junit.mjs'
 import { signApk } from '../src/signing.mjs'
 import { installApk } from '../src/install.mjs'
 import { loadManifest } from '../src/manifest.mjs'
-import { readHistory } from '../src/history.mjs'
 
 const PKG = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 const root = resolveRoot({ create: true })
@@ -34,27 +33,22 @@ const env = () => buildEnv(root)
 const tools = [
   {
     name: 'android_status',
-    description: 'Show the shared toolchain root, installed components, and the single build slot (holder + waiters). Cheap: call it before and after a build.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    handler: async () => {
-      const installed = {}
-      for (const name of ['jdk', 'gradle', 'kotlin', 'sdk', 'ndk']) {
-        const current = currentPath(root, name)
-        installed[name] = existsSync(current) ? safeReadlink(current) : null
-      }
-      const state = readSlotState(root)
-      const { limits, warnings, file } = loadLimits(root)
-      return {
-        text: json({
-          root,
-          limits,
-          limitWarnings: warnings,
-          limitsFile: file,
-          slot: state,
-          installed,
-          enabled: Object.entries(manifest.components).filter(([, spec]) => spec.enabled).map(([name]) => name),
-          recent: readHistory(root, 5),
-        }),
+    description: 'Show the shared toolchain root, installed components, and the single build slot (holder + waiters). Cheap: call it before and after a build. Pass all:true to summarize every registered root, or root to inspect one.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        all: { type: 'boolean', description: 'Summarize every root in the registry (each has its own slot and limits).' },
+        root: { type: 'string', description: 'Registered label or absolute path; default: the primary root.' },
+      },
+      additionalProperties: false,
+    },
+    handler: async (args) => {
+      try {
+        if (args?.all) return { text: json(describeAllRoots(root, { recent: 5, manifest })) }
+        const target = resolveRootRef(args?.root, { primary: root })
+        return { text: json({ ...describeRoot(target, { manifest }), registry: registryPath(root) }) }
+      } catch (error) {
+        return { isError: true, text: error?.message ?? String(error) }
       }
     },
   },
@@ -63,10 +57,20 @@ const tools = [
     description: 'Diagnose the shared area: real ELF architecture of java/gradle, versions, disk and memory headroom, provisioning warnings.',
     inputSchema: {
       type: 'object',
-      properties: { full: { type: 'boolean', description: 'Also run `gradle --version` (slow).' } },
+      properties: {
+        full: { type: 'boolean', description: 'Also run `gradle --version` (slow).' },
+        root: { type: 'string', description: 'Registered label or absolute path; default: the primary root.' },
+      },
       additionalProperties: false,
     },
-    handler: async (args) => ({ text: json(doctor({ root, full: Boolean(args?.full), manifest })) }),
+    handler: async (args) => {
+      try {
+        const target = resolveRootRef(args?.root, { primary: root })
+        return { text: json(doctor({ root: target, full: Boolean(args?.full), manifest })) }
+      } catch (error) {
+        return { isError: true, text: error?.message ?? String(error) }
+      }
+    },
   },
   {
     name: 'android_provision',
@@ -77,16 +81,34 @@ const tools = [
         components: { type: 'array', items: { type: 'string' }, description: 'Component names from the manifest; default: every enabled component.' },
         dryRun: { type: 'boolean' },
         allowUnpinned: { type: 'boolean', description: 'Allow archives without a pinned sha256 (not recommended).' },
+        root: { type: 'string', description: 'Target root: registered label or absolute path. Provisioning runs in that root\'s slot.' },
+        reuseFrom: { type: 'string', description: 'Copy matching archives from this root (label or path) instead of downloading them again.' },
+        register: { type: 'boolean', description: 'Add the target root to the registry so it can be referenced by label.' },
       },
       additionalProperties: false,
     },
     handler: async (args) => {
+      let target
+      try {
+        target = resolveRootRef(args?.root, { primary: root })
+      } catch (error) {
+        return { isError: true, text: error?.message ?? String(error) }
+      }
       const extra = []
+      if (target !== root) extra.push('--root', target)
+      if (args?.reuseFrom) {
+        try {
+          extra.push('--reuse-from', resolveRootRef(args.reuseFrom, { primary: root }))
+        } catch (error) {
+          return { isError: true, text: error?.message ?? String(error) }
+        }
+      }
+      if (args?.register) extra.push('--register')
       for (const component of args?.components ?? []) extra.push('--component', component)
       if (args?.dryRun) extra.push('--dry-run')
       if (args?.allowUnpinned) extra.push('--allow-unpinned')
       const result = await runInSlot({
-        root,
+        root: target,
         cmd: process.execPath,
         args: [PROVISIONER, ...extra],
         owner: `provision:${process.pid}`,
@@ -110,22 +132,29 @@ const tools = [
         cwd: { type: 'string', description: 'Project directory containing the Gradle wrapper; defaults to the broker cwd.' },
         timeoutMs: { type: 'integer', description: 'Wall-clock cap; defaults to 1200000.' },
         owner: { type: 'string', description: 'Label recorded in the slot holder, e.g. the issue or session name.' },
+        root: { type: 'string', description: 'Registered label or absolute path; default: the primary root. Roots build in parallel.' },
       },
       additionalProperties: false,
     },
     handler: async (args) => {
-      const gradle = binPath(root, 'gradle')
+      let target
+      try {
+        target = resolveRootRef(args?.root, { primary: root })
+      } catch (error) {
+        return { isError: true, text: error?.message ?? String(error) }
+      }
+      const gradle = binPath(target, 'gradle')
       if (!existsSync(gradle)) {
-        return { isError: true, text: `gradle is not provisioned under ${root}. Run android_provision first.` }
+        return { isError: true, text: `gradle is not provisioned under ${target}. Run android_provision first.` }
       }
       const tasks = args?.tasks?.length ? args.tasks : [args?.task ?? 'build']
       const extra = [...(args?.args ?? [])]
       const result = await runInSlot({
-        root,
+        root: target,
         cmd: gradle,
-        args: withAapt2Override(root, [...tasks, ...extra]),
+        args: withAapt2Override(target, [...tasks, ...extra]),
         cwd: args?.cwd ?? process.cwd(),
-        env: env(),
+        env: buildEnv(target),
         owner: args?.owner ?? `build:${process.pid}`,
         timeoutMs: args?.timeoutMs,
       })
@@ -156,22 +185,29 @@ const tools = [
         cwd: { type: 'string', description: 'Project directory; defaults to the broker cwd.' },
         timeoutMs: { type: 'integer' },
         owner: { type: 'string' },
+        root: { type: 'string', description: 'Registered label or absolute path; default: the primary root.' },
       },
       additionalProperties: false,
     },
     handler: async (args) => {
-      const gradle = binPath(root, 'gradle')
+      let target
+      try {
+        target = resolveRootRef(args?.root, { primary: root })
+      } catch (error) {
+        return { isError: true, text: error?.message ?? String(error) }
+      }
+      const gradle = binPath(target, 'gradle')
       if (!existsSync(gradle)) {
-        return { isError: true, text: `gradle is not provisioned under ${root}. Run android_provision first.` }
+        return { isError: true, text: `gradle is not provisioned under ${target}. Run android_provision first.` }
       }
       const projectDir = args?.cwd ?? process.cwd()
       const tasks = args?.tasks?.length ? args.tasks : ['test']
       const result = await runInSlot({
-        root,
+        root: target,
         cmd: gradle,
-        args: withAapt2Override(root, [...tasks, ...(args?.args ?? [])]),
+        args: withAapt2Override(target, [...tasks, ...(args?.args ?? [])]),
         cwd: projectDir,
-        env: env(),
+        env: buildEnv(target),
         owner: args?.owner ?? `test:${process.pid}`,
         timeoutMs: args?.timeoutMs,
       })
@@ -206,14 +242,21 @@ const tools = [
         timeoutMs: { type: 'integer' },
         waitMs: { type: 'integer', description: 'How long to wait for the build slot; default 120000.' },
         owner: { type: 'string' },
+        root: { type: 'string', description: 'Registered label or absolute path; default: the primary root.' },
       },
       required: ['apk'],
       additionalProperties: false,
     },
     handler: async (args) => {
+      let target
+      try {
+        target = resolveRootRef(args?.root, { primary: root })
+      } catch (error) {
+        return { isError: true, text: error?.message ?? String(error) }
+      }
       try {
         const result = await signApk({
-          root,
+          root: target,
           apk: args?.apk,
           out: args?.out,
           keystore: args?.keystore,
@@ -236,13 +279,20 @@ const tools = [
       properties: {
         apk: { type: 'string', description: 'APK path visible inside the container (or /sdcard).' },
         packageName: { type: 'string', description: 'Package id to report after requesting (e.g. com.example.hello).' },
+        root: { type: 'string', description: 'Root whose history records the request; default: the primary root.' },
       },
       required: ['apk'],
       additionalProperties: false,
     },
     handler: async (args) => {
+      let target
       try {
-        const result = await installApk({ apk: args?.apk, packageName: args?.packageName, root })
+        target = resolveRootRef(args?.root, { primary: root })
+      } catch (error) {
+        return { isError: true, text: error?.message ?? String(error) }
+      }
+      try {
+        const result = await installApk({ apk: args?.apk, packageName: args?.packageName, root: target })
         return { text: json(result), isError: !result.requested }
       } catch (error) {
         return { isError: true, text: error?.message ?? String(error) }
@@ -251,18 +301,10 @@ const tools = [
   },
 ]
 
-function safeReadlink(path) {
-  try {
-    return readlinkSync(path)
-  } catch {
-    return null
-  }
-}
-
 serveStdio({
   name: 'android-toolchain',
   version: PKG.version,
   instructions:
-    'Shared Android/JVM toolchain on this device. Call android_status first; builds go through android_build so they queue on one slot. Never run gradle directly in bash: that bypasses the slot and can OOM the device.',
+    'Shared Android/JVM toolchain on this device. Call android_status first; builds go through android_build so they queue on one slot per root (pass root for a second toolchain, all on android_status to list them). Never run gradle directly in bash: that bypasses the slot and can OOM the device.',
   tools,
 })

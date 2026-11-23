@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
- * `android-sign <apk> [--out path] [--keystore path] [--alias name] [--timeout ms]`
+ * `android-sign <apk> [--out path] [--root ROOT] [--keystore path] [--alias name] [--timeout ms]`
  *
- * Signs with apksigner.jar through the single slot and verifies the signature.
+ * Signs with apksigner.jar through a single slot and verifies the signature.
  * Passwords come from the environment or `<root>/signing.json` — never from
  * arguments, so they cannot appear in the transcript or in `ps`.
  */
 import { resolveRoot } from '../src/paths.mjs'
 import { signApk, signingHint } from '../src/signing.mjs'
+import { resolveRootRef } from '../src/roots.mjs'
 
 const argv = process.argv.slice(2)
 const value = (flag) => {
@@ -18,6 +19,7 @@ const value = (flag) => {
 }
 
 const out = value('--out')
+const rootRef = value('--root')
 const keystore = value('--keystore')
 const alias = value('--alias')
 const timeoutMs = Number(value('--timeout') ?? '')
@@ -26,11 +28,18 @@ const owner = value('--owner') ?? `sign:${process.pid}`
 const apk = argv[0]
 
 if (!apk) {
-  console.error('usage: android-sign <apk> [--out path] [--keystore path] [--alias name] [--timeout ms]')
+  console.error('usage: android-sign <apk> [--out path] [--root ROOT] [--keystore path] [--alias name] [--timeout ms]')
   process.exit(64)
 }
 
-const root = resolveRoot({})
+let root
+try {
+  root = resolveRootRef(rootRef, { primary: resolveRoot({}) })
+} catch (error) {
+  console.error(`[android-sign] ${error.message}`)
+  process.exit(1)
+}
+
 let result
 try {
   result = await signApk({

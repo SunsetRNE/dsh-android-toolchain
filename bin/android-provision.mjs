@@ -11,19 +11,22 @@
  *   android-provision                 # install enabled components
  *   android-provision --dry-run       # plan only
  *   android-provision --component jdk # one component
+ *   android-provision --root /path --register   # second root, remembered by label
+ *   android-provision --root /path --reuse-from default   # reuse another root's archives
  *   android-provision --pin           # print sha256 for enabled sources
  *   android-provision --pin --write   # write them into the repo manifest
  *   android-provision --verify-manifest [--strict]
  */
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { chmodSync, createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 import { MANIFEST_PATH, enabledComponents, loadManifest, probeSources, validateManifest } from '../src/manifest.mjs'
 import { binPath, currentPath, installedMarker, resolveRoot } from '../src/paths.mjs'
+import { registerRoot, resolveRootRef } from '../src/roots.mjs'
 
 const PKG_DIR = fileURLToPath(new URL('..', import.meta.url))
 const PKG = JSON.parse(readFileSync(join(PKG_DIR, 'package.json'), 'utf8'))
@@ -226,7 +229,7 @@ function writeGradleUserHome(root, manifest) {
   writeFileSync(file, `${lines.join('\n')}\n`)
 }
 
-export async function installComponent(root, component, { allowUnpinned = false, dryRun = false } = {}) {
+export async function installComponent(root, component, { allowUnpinned = false, dryRun = false, reuseArchive = null } = {}) {
   const target = join(root, component.name, component.version)
   const marker = installedMarker(root, component.name, component.version)
   if (existsSync(marker)) return { name: component.name, version: component.version, skipped: true }
@@ -242,6 +245,7 @@ export async function installComponent(root, component, { allowUnpinned = false,
   const extractDir = join(tmp, `extract-${component.name}-${component.version}`)
   rmSync(extractDir, { recursive: true, force: true })
   let reused = false
+  let reusedFrom = null
   let actual = ''
   let bytes = 0
   if (existsSync(archiveFile)) {
@@ -252,6 +256,18 @@ export async function installComponent(root, component, { allowUnpinned = false,
       reused = true
     } else {
       rmSync(archiveFile, { force: true })
+    }
+  }
+  // A second root on the same device should not download the same 350 MB again:
+  // copy the other root's archive when it matches the pin byte for byte.
+  if (!reused && reuseArchive && existsSync(reuseArchive)) {
+    const cached = await sha256(reuseArchive)
+    if (!component.sha256 || cached === component.sha256) {
+      copyFileSync(reuseArchive, archiveFile)
+      actual = cached
+      bytes = statSync(archiveFile).size
+      reused = true
+      reusedFrom = reuseArchive
     }
   }
   if (!reused) {
@@ -275,14 +291,14 @@ export async function installComponent(root, component, { allowUnpinned = false,
   }
   writeFileSync(
     marker,
-    JSON.stringify({ name: component.name, version: component.version, source: component.source, sha256: actual, bytes, installedAt: new Date().toISOString() }, null, 2),
+    JSON.stringify({ name: component.name, version: component.version, source: component.source, sha256: actual, bytes, installedAt: new Date().toISOString(), ...(reusedFrom ? { reusedFrom } : {}) }, null, 2),
   )
   const current = currentPath(root, component.name)
   rmSync(current, { force: true })
   symlinkSync(component.version, current)
   rmSync(extractDir, { recursive: true, force: true })
   rmSync(archiveFile, { force: true })
-  return { name: component.name, version: component.version, installed: true, bytes }
+  return { name: component.name, version: component.version, installed: true, bytes, reusedFrom }
 }
 
 async function verifyManifest({ strict }) {
@@ -331,14 +347,21 @@ async function main() {
     if (process.env.CI) return log('CI detected: skipping provisioning (run android-provision on the device)')
   }
 
+  const primary = resolveRoot({})
   const root = resolveRoot({ root: value('--root'), create: true })
   const manifest = load()
   const selected = values('--component')
+  const unknown = selected.filter((name) => !manifest.components?.[name])
+  if (unknown.length) fail(`unknown component(s): ${unknown.join(', ')}; manifest has: ${Object.keys(manifest.components ?? {}).join(', ')}`)
   const dryRun = has('--dry-run')
   const allowUnpinned = has('--allow-unpinned')
   const todo = enabledComponents(manifest).filter((component) => selected.length === 0 || selected.includes(component.name))
 
+  const reuseFrom = value('--reuse-from')
+  const reuseRoot = reuseFrom ? resolveRootRef(reuseFrom, { primary }) : null
+
   log(`root: ${root}${dryRun ? ' (dry run)' : ''}`)
+  if (reuseRoot) log(`reusing archives from: ${reuseRoot}`)
   const noLink = has('--no-link')
   if (!dryRun) {
     writeGradleUserHome(root, manifest)
@@ -348,12 +371,21 @@ async function main() {
   let failures = 0
   for (const component of todo) {
     try {
-      const outcome = await installComponent(root, component, { allowUnpinned, dryRun })
-      log(`${component.name}@${component.version}: ${outcome.skipped ? 'already installed' : outcome.planned ? 'would install' : 'installed'}`)
+      const outcome = await installComponent(root, component, {
+        allowUnpinned,
+        dryRun,
+        reuseArchive: reuseRoot ? archivePath(reuseRoot, component) : null,
+      })
+      const state = outcome.skipped ? 'already installed' : outcome.planned ? 'would install' : `installed${outcome.reusedFrom ? ` (reused ${outcome.reusedFrom})` : ''}`
+      log(`${component.name}@${component.version}: ${state}`)
     } catch (error) {
       failures += 1
       console.error(`[android-toolchain] ${error?.message ?? error}`)
     }
+  }
+  if (has('--register') && !dryRun) {
+    const registered = registerRoot(primary, { path: root, label: value('--label') })
+    log(`registry: ${registered.file} (${registered.already ? 'already registered' : 'added'} "${registered.label}" -> ${registered.path})`)
   }
   if (!auto && !dryRun) {
     installToolLaunchers(root, manifest, { noLink })

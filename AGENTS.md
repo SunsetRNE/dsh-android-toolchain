@@ -9,6 +9,7 @@
 | `bin/*.mjs` | 可执行入口（MCP broker、CLI） | 只做参数解析与编排；**stdout 是 MCP JSON-RPC 通道，任何 `console.log` 都会毁掉会话** |
 | `src/*.mjs` | 纯模块，可被测试直接 import | 不读 `process.argv`，不在 import 时写盘 |
 | `src/slot.mjs` | 单槽实现 | 必须走 `flock` 文件锁；不得改回进程内信号量（MCP 探测进程、服务进程、CLI、子代理是不同进程） |
+| `src/roots.mjs` | 设备级 root 注册表 | 只做发现/命名/选择；不得改动其它 root 的锁、limits 或构件；单 root 行为必须不变（主 root 恒在，label `default`） |
 | `toolchain.manifest.json` | 唯一供应链 | 组件版本/来源/sha256/Gradle 参数只在这里改；**发布前每个 enabled 组件都必须 pin** |
 | `cordis.patch.yml` | Host 平面接线 | 只插入 `android-toolchain`（shell-env facts）和 `android-toolchain-mcp`（stdio MCP）两行 |
 | `index.js` | Host 插件 | 只做轻量建目录 + `DSH_ANDROID_*` facts；**不要在这里下载工具链**（阻塞 Host 启动） |
@@ -19,15 +20,15 @@
 ## 常用命令
 
 ```sh
-node --test tests/*.test.mjs                 # 全部测试（约 9s）
+node --test tests/*.test.mjs                 # 全部测试（约 15s）
 node bin/android-provision.mjs --dry-run     # 供应计划，不写盘
 node bin/android-provision.mjs --pin --write # 回填 sha256（发布前必须）
 node bin/android-provision.mjs --verify-manifest --strict   # 发布门禁
 node bin/android-status.mjs                  # 槽位/已装组件
+node bin/android-status.mjs --all            # 所有注册 root 的槽位/组件/limits
 node bin/android-doctor.mjs [--full]         # 架构/版本/余量诊断
 sh scripts/smoke.sh                          # 真机全量：供应+APK+JUnit+架构断言
 sh scripts/smoke.sh --jvm                    # 纯 Linux 基线：无 APK
-sh scripts/smoke.sh --apk-ci                 # 供 CI：跳过 Android aapt2，尝试 Maven aapt2
 ```
 
 本机验证 MCP 接线（不装插件也能测）：
@@ -42,10 +43,11 @@ DSH_ANDROID_ROOT=/tmp/toolchain node bin/android-broker.mjs   # 然后按 JSON-R
 2. **加/升组件**：改 `toolchain.manifest.json` → `--pin --write` → 跑 `--verify-manifest --strict` → README 的 aarch64 边界表如涉及能力变化要一起改。
 3. **加 MCP 工具**：在 `bin/android-broker.mjs` 的 `tools` 里加 schema + handler，补 `tests/mcp.test.mjs` 的 `tools/list` 断言，更新 README 工具表。
 4. **改 `cordis.patch.yml`**：确认 `toolCallTimeoutMs`（构建可能 20 分钟）、`failOnStartupError: false`（broker 缺失时不要拖垮启动）仍成立。
+5. **改 root 语义**（`src/roots.mjs`、`--root`、注册表）：单 root 行为必须保持不变（主 root 恒在、label `default`、无需注册表也能用）；补 `tests/roots.test.mjs`，并确认两个 root 的构建区间仍重叠。
 
 ## 冒烟与 CI
 
-- `scripts/smoke.sh` 是唯一端到端入口：`device`（默认，含 APK）、`--jvm`（纯 Linux 基线）、`--apk-ci`（跳过 Android aapt2，依赖 qemu 跑 Maven aapt2）。
+- `scripts/smoke.sh` 是唯一端到端入口：`device`（默认，含 APK）、`--jvm`（纯 Linux 基线；qemu 跑 Maven aapt2 的 `--apk-ci` 已删除，见下条）。
 - `smoke.sh` 会带 `--wait`（默认 10 分钟，`SMOKE_WAIT_MS` 可调）排队，不要因为本地槽位忙就以为脚本失败。
 - Termux aapt2 需要 `/system/bin/linker64`，**纯 Linux 主机上不可能跑**；CI 只覆盖 `--jvm`（供应/SDK/JUnit/doctor），**APK 由真机 `smoke.sh` 全量模式门禁**。不要再往 CI 里加 qemu/binfmt 的尝试（已试过并放弃）。
 - `examples/` 里的项目必须保持**零第三方依赖**（只有 AGP / JUnit），否则冷缓存 CI 会变慢。

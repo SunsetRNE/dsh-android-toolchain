@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * `android-test [tasks...] [--cwd DIR] [--timeout ms] [--wait ms]`
+ * `android-test [tasks...] [--cwd DIR] [--root ROOT] [--timeout ms] [--wait ms]`
  *
- * Runs Gradle's test task through the single slot and reads the JUnit XML it
+ * Runs Gradle's test task through a single slot and reads the JUnit XML it
  * writes, so callers get pass/fail counts and failing test names without
  * scraping Gradle's console output. Exit code is Gradle's.
  */
@@ -11,6 +11,7 @@ import { binPath, resolveRoot } from '../src/paths.mjs'
 import { buildEnv, withAapt2Override } from '../src/env.mjs'
 import { runInSlot } from '../src/slot.mjs'
 import { summarize } from '../src/junit.mjs'
+import { resolveRootRef } from '../src/roots.mjs'
 
 const argv = process.argv.slice(2)
 const value = (flag) => {
@@ -21,12 +22,20 @@ const value = (flag) => {
 }
 
 const cwd = value('--cwd') ?? process.cwd()
+const rootRef = value('--root')
 const timeoutMs = Number(value('--timeout') ?? '')
 const waitMs = Number(value('--wait') ?? '')
 const owner = value('--owner') ?? `test:${process.pid}`
 const tasks = argv.length ? argv : ['test']
 
-const root = resolveRoot({})
+let root
+try {
+  root = resolveRootRef(rootRef, { primary: resolveRoot({}) })
+} catch (error) {
+  console.error(`[android-test] ${error.message}`)
+  process.exit(1)
+}
+
 const gradle = binPath(root, 'gradle')
 if (!existsSync(gradle)) {
   console.error(`[android-test] gradle is not provisioned under ${root}; run android-provision`)
@@ -56,5 +65,5 @@ if (summary) {
     console.error(`[android-test] FAIL ${failure.classname || failure.suite} > ${failure.test}: ${failure.message.split('\n')[0]}`)
   }
 }
-console.log(JSON.stringify({ buildId: result.id, exitCode: result.exitCode, busy: Boolean(result.busy), summary }, null, 2))
+console.log(JSON.stringify({ buildId: result.id, exitCode: result.exitCode, busy: Boolean(result.busy), root, summary }, null, 2))
 process.exit(result.exitCode ?? 1)

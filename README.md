@@ -30,7 +30,7 @@
              ▼                        ▼
    nice 19 + taskset + timeout    holder.json / queue/*
              │
-     <root>/bin/gradle → <root>/gradle/current → JVM(-Xmx1024m)
+     <root>/bin/gradle → <root>/gradle/current → JVM(-Xmx1536m)
 ```
 
 ## 安装
@@ -65,7 +65,8 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
   bin/            # java gradle android-broker android-provision android-build ... env.sh
                   # 可写时同名启动器也会写入 /usr/local/bin，任何会话 shell 直接可见
   gradle-home/    # GRADLE_USER_HOME：缓存 + gradle.properties（首次生成后不再覆盖）
-  run/            # build.lock / holder.json / queue/  ← 单槽状态
+  run/            # build.lock / holder.json / queue/  ← 单槽状态（每个 root 独立）
+  roots.json      # 设备级 root 注册表（多套工具链时出现，见下节）
 ```
 
 工具链**不在** profile 里，也**不在**任何 workspace 里：插件升级不删 JDK，workspace 只是代码。
@@ -74,13 +75,15 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 
 | 工具 | 作用 |
 |---|---|
-| `mcp__android__android_status` | 共享区、已装组件、当前 holder 与排队者、上限、最近 5 次构建 |
+| `mcp__android__android_status` | 共享区、已装组件、当前 holder 与排队者、上限、最近 5 次构建；`all:true` 汇总所有 root |
 | `mcp__android__android_doctor` | java/gradle 的**真实 ELF 架构**、版本、磁盘/内存余量、供应告警 |
-| `mcp__android__android_provision` | 按 manifest 安装/修复（幂等、校验 sha256、走单槽） |
+| `mcp__android__android_provision` | 按 manifest 安装/修复（幂等、校验 sha256、走单槽）；可 `register`/`reuseFrom` |
 | `mcp__android__android_build` | 跑一个/多个 Gradle task，返回退出码与输出尾部 |
 | `mcp__android__android_test` | 跑 Gradle 测试并汇总 JUnit XML：通过/失败/错误/跳过 + 失败用例名与信息 |
 | `mcp__android__android_sign` | 用 release keystore + `apksigner.jar` 签名并验证，返回证书 SHA-256 |
 | `mcp__android__android_install` | 把 APK 交给系统安装器（用户在设备上确认），可选回报当前已装版本 |
+
+构建类工具都接受 `root`（注册表里的 label 或绝对路径），不传就是主 root；单 root 部署行为与之前完全一致。`root` 的用途见“多套工具链”。
 
 非 agent 入口（同一把锁）：`android-build <task...> [--cwd DIR] [--timeout ms]`、`android-test [...]`（默认跑 `test` 并输出 JUnit 汇总 + 失败清单）。
 
@@ -110,7 +113,28 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 - 取值校验：`waitMs` 1s–1h、`maxQueue` 0–10、`timeoutMs` 1min–4h、`nice` 0–19、`cpus` 形如 `"0-3"`（空串表示不绑核）
 - 非法值**不会生效也不会中断构建**：保留默认值，并在 `android_status.limitWarnings` / `android-doctor` 里报告
 - 生效范围：所有会话、CLI 与 MCP 工具（读同一份文件），改完下一次构建即生效，无需重启
-- `slots` 仍固定为 1：多槽会改变内存契约，不在本版本开放
+- `slots` 仍固定为 1：多槽会改变内存契约，不在本版本开放；要并行请用多个 root（见下节），并自己承担内存
+
+### 多套工具链（多 root）
+
+一台设备可以有多套工具链（备用 JDK 版本、灰度验证、互不干扰的项目组）。**锁是按 root 分的**：`<root>/run/build.lock` 各自独立，`limits.json` 也各自读取，所以两个 root 能同时构建、互不排队。
+
+注册表是**设备级**记录，不属于任何一套工具链（删掉一套不会影响其它）；默认放在主 root 下，可用 `DSH_ANDROID_REGISTRY` 改位置：
+
+```sh
+android-provision --root /opt/android-toolchain-alt --register --label alt --reuse-from default
+android-status --all
+```
+
+- 注册：`android-provision --root <目录> --register [--label <名字>]`；label 只能字母数字加 `._-`，冲突直接报错（不静默改名）
+- 选择：CLI `--root <label|绝对路径>`，MCP 参数 `root`；不传 = 主 root（label `default`）
+- 总览：`android-status --all` / `android_status {all:true}`，每个 root 独立报告已装组件、槽位、limits、最近构建
+- 搬运缓存：`--reuse-from <label|路径>` 复用另一个 root 已下载的归档（按 sha256 与 manifest 比对，不匹配就正常下载）
+- 未知 label 会**报错并列出已知 root**，不会悄悄落到别的工具链上
+
+`roots.json` 损坏或不可写不是致命错误：降级为“只有主 root”，并在 `android-status --all` / doctor 里给出 warning。
+
+注意内存：两个 root 同时构建 = 两个 JVM。设备可用内存约 1 GB，真要并行请把其中一套的 `-Xmx` 调低，或只在内存宽松时并行。
 
 ### 签名（release）
 
@@ -199,6 +223,7 @@ android-install app-signed.apk --package com.example.hello
 - Temurin **21.0.5+11 (aarch64)** + Gradle **8.10.2**：`android-build build` 跑通一个真实 Java 项目（`BUILD SUCCESSFUL`，15 s）
 - 同一个构建经 `mcp__android__android_build` 调用成功（MCP 客户端 → broker → 单槽 → Gradle，2.7 s 增量）
 - `android-doctor` 报告 `java arch = aarch64`、槽位空闲
+- 多 root（0.5.1）：`android-status --all` 聚合两个 root 的组件/槽位/limits；`tests/slot.test.mjs` 用作业内时间戳证明两个 root 的构建区间**重叠**（互不排队）
 
 ## 真打 APK（aarch64，已实测）
 
@@ -273,8 +298,8 @@ node bin/android-provision.mjs --manifest m.json --root /tmp/x --no-link   # 用
   sh scripts/smoke.sh --jvm    # 纯 Linux 可跑的基线（无 APK）
   SMOKE_WAIT_MS=900000 sh scripts/smoke.sh   # 槽位忙时排队更久
   ```
-- `release.yml`：打 `v*` tag → 测试 → `--verify-manifest --strict`（必须 pinned 且可达）→ `npm publish --provenance` → 生成 tarball 附到 GitHub Release。
-- 需要在仓库 secrets 里配 `NPM_TOKEN`；公开仓库才有 provenance。
+- `release.yml`：打 `v*` tag → 测试 → `--verify-manifest --strict`（必须 pinned 且可达）→ `npm pack` 出 tarball + `SHA256SUMS` 附到 GitHub Release。
+- 发布链路里**没有 npm publish**，仓库也不需要 `NPM_TOKEN`；安装走 `dsha-plugin import`。
 
 ## 故障排查
 

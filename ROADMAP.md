@@ -52,11 +52,11 @@
 ## 4. 可配置与多实例（0.5）
 
 - [x] 排队/超时/nice/CPU 运行期可配（`<root>/limits.json` 或 `DSH_ANDROID_LIMITS`，非法值降级并告警）；槽数仍固定 1（0.5.0）
-- [ ] `<root>` 注册表：一台设备多套工具链（不同 JDK/NDK 版本）时各自锁分片
-- [ ] `android_status --all` 汇总所有 root 的槽位与版本
-- [ ] 迁移命令：`android-provision --root` 之间搬移/复用缓存
+- [x] `<root>` 注册表：一台设备多套工具链（不同 JDK/NDK 版本）时各自锁分片（0.5.1，`<root>/roots.json`）
+- [x] `android_status --all` 汇总所有 root 的槽位与版本（0.5.1）
+- [x] 迁移命令：`android-provision --root ... --reuse-from <root>` 复用另一个 root 的缓存（0.5.1）
 
-**验收**：两个 root 同时构建互不阻塞；设置改动无需重启 Web 即生效。
+**验收（已验证）**：两个 root 同时构建互不阻塞——`tests/slot.test.mjs` 用作业内时间戳断言两段构建区间重叠；设置改动无需重启 Web 即生效（limits 每次调用现读）。
 
 ## 5. 文档与生态（0.6）
 
