@@ -63,6 +63,7 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 /opt/android-toolchain/            # DSH_ANDROID_ROOT 可覆盖
   jdk/<version>/  gradle/<version>/   # 内容寻址的版本目录 + current 软链
   bin/            # java gradle android-broker android-provision android-build ... env.sh
+                  # 可写时同名启动器也会写入 /usr/local/bin，任何会话 shell 直接可见
   gradle-home/    # GRADLE_USER_HOME：缓存 + gradle.properties（首次生成后不再覆盖）
   run/            # build.lock / holder.json / queue/  ← 单槽状态
 ```

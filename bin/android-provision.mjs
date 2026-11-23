@@ -347,7 +347,7 @@ async function main() {
     }
   }
   if (!auto && !dryRun) {
-    installToolLaunchers(root, manifest)
+    installToolLaunchers(root, manifest, { noLink })
     log(`launchers: ${join(root, 'bin')}`)
   }
   if (failures) {
