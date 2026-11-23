@@ -173,18 +173,27 @@ export function writeSharedEnv(root) {
   chmodSync(file, 0o644)
 }
 
-function installToolLaunchers(root, manifest) {
+function installToolLaunchers(root, manifest, { noLink = false } = {}) {
+  const link = (tool, real) => {
+    writeLauncher(binPath(root, tool), launcherBody(root, real))
+    if (noLink) return
+    // Shared PATH convenience: a plain `java` / `gradle` works in any session
+    // shell without sourcing env.sh. Never written for containers/CI.
+    try {
+      writeLauncher(join('/usr/local/bin', tool), launcherBody(root, real))
+    } catch {}
+  }
   const jdk = currentPath(root, 'jdk')
   for (const tool of ['java', 'javac', 'jar']) {
     const real = join(jdk, 'bin', tool)
-    if (existsSync(real)) writeLauncher(binPath(root, tool), launcherBody(root, real))
+    if (existsSync(real)) link(tool, real)
   }
   const gradle = findIn(currentPath(root, 'gradle'), 'gradle')
-  if (gradle) writeLauncher(binPath(root, 'gradle'), launcherBody(root, gradle))
+  if (gradle) link('gradle', gradle)
   for (const component of enabledComponents(manifest)) {
     for (const tool of component.provides ?? []) {
       const real = findIn(currentPath(root, component.name), tool)
-      if (real) writeLauncher(binPath(root, tool), launcherBody(root, real))
+      if (real) link(tool, real)
     }
   }
   writeSharedEnv(root)
