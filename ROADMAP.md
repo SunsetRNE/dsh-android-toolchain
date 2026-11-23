@@ -51,7 +51,7 @@
 
 ## 4. 可配置与多实例（0.5）
 
-- [ ] 槽数/排队/超时/nice/CPU 从 DSH 设置读取（保留默认值）
+- [x] 排队/超时/nice/CPU 运行期可配（`<root>/limits.json` 或 `DSH_ANDROID_LIMITS`，非法值降级并告警）；槽数仍固定 1（0.5.0）
 - [ ] `<root>` 注册表：一台设备多套工具链（不同 JDK/NDK 版本）时各自锁分片
 - [ ] `android_status --all` 汇总所有 root 的槽位与版本
 - [ ] 迁移命令：`android-provision --root` 之间搬移/复用缓存

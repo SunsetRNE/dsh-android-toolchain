@@ -1,6 +1,6 @@
 {
   "name": "dsh-android-toolchain",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "description": "Shared Android/JVM toolchain provisioning plus a single-slot build broker (MCP server) for DeepSeek Harness on aarch64.",
   "license": "MIT",
   "type": "module",

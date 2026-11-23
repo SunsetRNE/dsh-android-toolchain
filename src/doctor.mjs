@@ -124,6 +124,7 @@ export function doctor({ root: rootOption, manifest = loadManifest(), full = fal
   return {
     root,
     limits: state.limits,
+    limitWarnings: state.limitWarnings,
     gradleDaemons,
     recentBuilds: readHistory(root, 3),
     slot: state,

@@ -17,24 +17,14 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runPaths } from './paths.mjs'
 import { appendHistory } from './history.mjs'
+import { DEFAULT_LIMITS, loadLimits } from './limits.mjs'
 
 export const EXIT_BUSY = 75
 
 const HOLDER = fileURLToPath(new URL('./slot-holder.mjs', import.meta.url))
 
-/** Defaults for every build. Overridable per call and by the manifest. */
-export const LIMITS = {
-  /** How long one caller may wait for the slot before failing fast. */
-  waitMs: 120_000,
-  /** How many callers may wait behind the holder. Beyond this, fail fast. */
-  maxQueue: 3,
-  /** Hard wall-clock cap for a single build. */
-  timeoutMs: 1_200_000,
-  /** Background-friendly priority. */
-  nice: 19,
-  /** Leave the first cores for the UI. Set to '' to disable. */
-  cpus: '0-3',
-}
+/** Defaults, re-exported for callers that only need the shape. */
+export const LIMITS = DEFAULT_LIMITS
 
 function alive(pid) {
   try {
@@ -79,7 +69,8 @@ export function readSlotState(root) {
       } catch {}
     }
   } catch {}
-  return { holder, queue, limits: LIMITS }
+  const { limits, warnings, file } = loadLimits(root)
+  return { holder, queue, limits, limitWarnings: warnings, limitsFile: file }
 }
 
 /**
@@ -128,7 +119,8 @@ export async function runInSlot({
     return { ...outcome, id }
   }
 
-  const queueLimit = maxQueue ?? LIMITS.maxQueue
+  const configured = loadLimits(root).limits
+  const queueLimit = maxQueue ?? configured.maxQueue
   const waiting = readdirSync(paths.queue).length
   if (waiting >= queueLimit) {
     return done({
@@ -145,7 +137,7 @@ export async function runInSlot({
   writeFileSync(entry, JSON.stringify({ pid: process.pid, owner, since: new Date().toISOString() }))
 
   const resultFile = join(paths.runDir, `result-${process.pid}-${Date.now()}.json`)
-  const waitSeconds = Math.ceil((waitMs ?? LIMITS.waitMs) / 1000)
+  const waitSeconds = Math.ceil((waitMs ?? configured.waitMs) / 1000)
   const holderArgs = [
     process.execPath,
     HOLDER,
@@ -153,9 +145,9 @@ export async function runInSlot({
     '--result', resultFile,
     '--queue-entry', entry,
     '--owner', owner,
-    '--timeout', String(timeoutMs ?? LIMITS.timeoutMs),
-    '--nice', String(nice ?? LIMITS.nice),
-    '--cpus', cpus ?? LIMITS.cpus,
+    '--timeout', String(timeoutMs ?? configured.timeoutMs),
+    '--nice', String(nice ?? configured.nice),
+    '--cpus', cpus ?? configured.cpus,
     '--cwd', cwd ?? process.cwd(),
     '--',
     cmd,

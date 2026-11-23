@@ -12,7 +12,8 @@ import { fileURLToPath } from 'node:url'
 import { serveStdio } from '../src/mcp.mjs'
 import { binPath, currentPath, resolveRoot } from '../src/paths.mjs'
 import { buildEnv, withAapt2Override } from '../src/env.mjs'
-import { LIMITS, readSlotState, runInSlot } from '../src/slot.mjs'
+import { readSlotState, runInSlot } from '../src/slot.mjs'
+import { loadLimits } from '../src/limits.mjs'
 import { doctor } from '../src/doctor.mjs'
 import { summarize } from '../src/junit.mjs'
 import { signApk } from '../src/signing.mjs'
@@ -42,10 +43,13 @@ const tools = [
         installed[name] = existsSync(current) ? safeReadlink(current) : null
       }
       const state = readSlotState(root)
+      const { limits, warnings, file } = loadLimits(root)
       return {
         text: json({
           root,
-          limits: LIMITS,
+          limits,
+          limitWarnings: warnings,
+          limitsFile: file,
           slot: state,
           installed,
           enabled: Object.entries(manifest.components).filter(([, spec]) => spec.enabled).map(([name]) => name),

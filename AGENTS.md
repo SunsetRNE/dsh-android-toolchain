@@ -38,7 +38,7 @@ DSH_ANDROID_ROOT=/tmp/toolchain node bin/android-broker.mjs   # 然后按 JSON-R
 
 ## 修改协议
 
-1. **改上限**（槽位/排队/超时/nice/CPU）：改 `src/slot.mjs` 的 `LIMITS`，同步 README 的上限表，并更新 `tests/slot.test.mjs`。
+1. **改默认上限**（排队/超时/nice/CPU 的出厂值）：改 `src/limits.mjs` 的 `DEFAULT_LIMITS`，同步 README 的上限表，并更新 `tests/limits.test.mjs`。运行期覆盖走 `<root>/limits.json`，不要写死。
 2. **加/升组件**：改 `toolchain.manifest.json` → `--pin --write` → 跑 `--verify-manifest --strict` → README 的 aarch64 边界表如涉及能力变化要一起改。
 3. **加 MCP 工具**：在 `bin/android-broker.mjs` 的 `tools` 里加 schema + handler，补 `tests/mcp.test.mjs` 的 `tools/list` 断言，更新 README 工具表。
 4. **改 `cordis.patch.yml`**：确认 `toolCallTimeoutMs`（构建可能 20 分钟）、`failOnStartupError: false`（broker 缺失时不要拖垮启动）仍成立。

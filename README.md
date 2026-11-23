@@ -98,6 +98,20 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 
 `android_status` 的 `holder.json` 里记录了 owner（会话/调用方标签）、pid、开始时间，谁占着槽一目了然。
 
+### 调上限
+
+上面的数字是**默认值**，可以不改代码就调整（换设备、换负载时用）：
+
+```json
+// /opt/android-toolchain/limits.json   （或 DSH_ANDROID_LIMITS 指向别的文件）
+{"waitMs": 300000, "maxQueue": 5, "timeoutMs": 1800000, "nice": 19, "cpus": "0-3"}
+```
+
+- 取值校验：`waitMs` 1s–1h、`maxQueue` 0–10、`timeoutMs` 1min–4h、`nice` 0–19、`cpus` 形如 `"0-3"`（空串表示不绑核）
+- 非法值**不会生效也不会中断构建**：保留默认值，并在 `android_status.limitWarnings` / `android-doctor` 里报告
+- 生效范围：所有会话、CLI 与 MCP 工具（读同一份文件），改完下一次构建即生效，无需重启
+- `slots` 仍固定为 1：多槽会改变内存契约，不在本版本开放
+
 ### 签名（release）
 
 签名材料**不通过工具参数传递**（参数会进对话记录），只从共享区配置或环境变量读取：
