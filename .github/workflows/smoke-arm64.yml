@@ -68,16 +68,20 @@ jobs:
             /opt/android-toolchain/tmp
             /opt/android-toolchain/gradle-home
           key: android-toolchain-apk-arm64-${{ hashFiles('toolchain.manifest.json', 'examples/**/*.gradle') }}
-      - name: Install qemu-user (x86_64 aapt2 under emulation)
+      - name: Install qemu-user plus the amd64 runtime the aapt2 needs
         run: |
           sudo apt-get update
           sudo apt-get install -y qemu-user-static binfmt-support
+          sudo dpkg --add-architecture amd64
+          sudo apt-get update
+          sudo apt-get install -y libc6:amd64 libstdc++6:amd64
+          ls -l /lib64/ld-linux-x86-64.so.2
           ls /proc/sys/fs/binfmt_misc | grep -i qemu || true
       - name: Smoke (provision + APK via qemu + JUnit)
         run: sudo env "PATH=$PATH" "DSH_ANDROID_ROOT=/opt/android-toolchain" sh scripts/smoke.sh --apk-ci
       - name: Keep the built APK
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hello-apk
           path: examples/hello-apk/app/build/outputs/apk/debug/*.apk
