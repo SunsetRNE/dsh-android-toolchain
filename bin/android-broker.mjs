@@ -199,6 +199,7 @@ const tools = [
         keystore: { type: 'string', description: 'Override the keystore path from the signing config.' },
         alias: { type: 'string', description: 'Override the key alias from the signing config.' },
         timeoutMs: { type: 'integer' },
+        waitMs: { type: 'integer', description: 'How long to wait for the build slot; default 120000.' },
         owner: { type: 'string' },
       },
       required: ['apk'],
@@ -213,6 +214,7 @@ const tools = [
           keystore: args?.keystore,
           alias: args?.alias,
           timeoutMs: args?.timeoutMs,
+          waitMs: args?.waitMs,
           owner: args?.owner ?? `sign:${process.pid}`,
         })
         return { text: json(result), isError: !result.ok }

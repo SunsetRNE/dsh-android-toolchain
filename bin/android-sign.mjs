@@ -21,6 +21,7 @@ const out = value('--out')
 const keystore = value('--keystore')
 const alias = value('--alias')
 const timeoutMs = Number(value('--timeout') ?? '')
+const waitMs = Number(value('--wait') ?? '')
 const owner = value('--owner') ?? `sign:${process.pid}`
 const apk = argv[0]
 
@@ -39,6 +40,7 @@ try {
     keystore,
     alias,
     timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : undefined,
+    waitMs: Number.isFinite(waitMs) && waitMs > 0 ? waitMs : undefined,
     owner,
   })
 } catch (error) {
@@ -48,6 +50,6 @@ try {
 }
 
 if (result.output) console.error(result.output)
-console.error(`[android-sign] ${result.signBuildId ?? '-'} -> ${result.out} verified=${result.verified ?? false}`)
+console.error(`[android-sign] ${result.signBuildId ?? '-'} -> ${result.out} verified=${result.verified ?? false}${result.reason ? ` (${result.reason})` : ''}`)
 console.log(JSON.stringify(result, null, 2))
-process.exit(result.ok ? 0 : 1)
+process.exit(result.ok ? 0 : result.exitCode ?? 1)

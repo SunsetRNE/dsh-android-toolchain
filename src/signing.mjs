@@ -123,7 +123,7 @@ export function parseCertDigest(output) {
  *   certSha256?: string|null, signBuildId?: string, verifyBuildId?: string,
  *   verifyOutput?: string, reason?: string}>}
  */
-export async function signApk({ root, apk, out, keystore, alias, timeoutMs, owner, env = process.env }) {
+export async function signApk({ root, apk, out, keystore, alias, timeoutMs, waitMs, owner, env = process.env }) {
   const jar = findApksigner(root)
   if (!jar) throw new Error(`apksigner.jar not found under ${root}/sdk/build-tools; run scripts/setup-apk.sh`)
   if (!existsSync(apk)) throw new Error(`APK not found: ${apk}`)
@@ -163,10 +163,21 @@ export async function signApk({ root, apk, out, keystore, alias, timeoutMs, owne
     env: childEnv,
     owner: owner ?? `sign:${process.pid}`,
     timeoutMs: timeoutMs ?? 300_000,
+    waitMs,
   })
   if (!sign.ok) {
-    // apksigner's own message is safe: it never echoes the password.
-    return { ok: false, out: target, reason: 'sign failed', output: `${sign.stdout}\n${sign.stderr}`.trim(), signBuildId: sign.id }
+    // Distinguish "never ran" from "apksigner said no": a busy slot is not a
+    // signing error, and callers need the right exit code to retry.
+    return {
+      ok: false,
+      out: target,
+      busy: Boolean(sign.busy),
+      timedOut: Boolean(sign.timedOut),
+      exitCode: sign.exitCode,
+      reason: sign.busy ? sign.reason ?? 'slot busy' : sign.timedOut ? 'sign timed out' : 'sign failed',
+      output: `${sign.stdout}\n${sign.stderr}`.trim(),
+      signBuildId: sign.id,
+    }
   }
 
   const verify = await runInSlot({

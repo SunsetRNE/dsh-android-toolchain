@@ -238,4 +238,5 @@ node bin/android-provision.mjs --manifest m.json --root /tmp/x --no-link   # 用
 | `AAPT2 ... ld.config.txt` 警告 | bionic loader 的无害提示，构建正常 |
 | `sdkmanager` 报找不到 java | 共享区没有 JDK；先 `android-provision`（`setup-apk.sh` 会检查） |
 | `apksigner.jar not found` | 没跑过 `scripts/setup-apk.sh`，或 build-tools 缺失 |
+| 签名返回 `busy` / 退出码 75 | 单槽被别的会话占着；用 `--wait <ms>` 排更久，或看 `android_status` 的 holder |
 | `signing is not configured` | 按提示建 `<root>/signing.json`（chmod 600）或设置 `ANDROID_*` 环境变量；**不要把密码发到对话里** |
