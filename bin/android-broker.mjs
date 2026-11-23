@@ -16,6 +16,7 @@ import { LIMITS, readSlotState, runInSlot } from '../src/slot.mjs'
 import { doctor } from '../src/doctor.mjs'
 import { summarize } from '../src/junit.mjs'
 import { signApk } from '../src/signing.mjs'
+import { installApk } from '../src/install.mjs'
 import { loadManifest } from '../src/manifest.mjs'
 import { readHistory } from '../src/history.mjs'
 
@@ -218,6 +219,27 @@ const tools = [
           owner: args?.owner ?? `sign:${process.pid}`,
         })
         return { text: json(result), isError: !result.ok }
+      } catch (error) {
+        return { isError: true, text: error?.message ?? String(error) }
+      }
+    },
+  },
+  {
+    name: 'android_install',
+    description: 'Hand an APK to the Android system installer through the DSHA app bridge. The user confirms on the device: OK means the request was made, not that the package is installed. Optionally reports the currently installed version of the package.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        apk: { type: 'string', description: 'APK path visible inside the container (or /sdcard).' },
+        packageName: { type: 'string', description: 'Package id to report after requesting (e.g. com.example.hello).' },
+      },
+      required: ['apk'],
+      additionalProperties: false,
+    },
+    handler: async (args) => {
+      try {
+        const result = await installApk({ apk: args?.apk, packageName: args?.packageName })
+        return { text: json(result), isError: !result.requested }
       } catch (error) {
         return { isError: true, text: error?.message ?? String(error) }
       }

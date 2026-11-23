@@ -80,6 +80,7 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 | `mcp__android__android_build` | 跑一个/多个 Gradle task，返回退出码与输出尾部 |
 | `mcp__android__android_test` | 跑 Gradle 测试并汇总 JUnit XML：通过/失败/错误/跳过 + 失败用例名与信息 |
 | `mcp__android__android_sign` | 用 release keystore + `apksigner.jar` 签名并验证，返回证书 SHA-256 |
+| `mcp__android__android_install` | 把 APK 交给系统安装器（用户在设备上确认），可选回报当前已装版本 |
 
 非 agent 入口（同一把锁）：`android-build <task...> [--cwd DIR] [--timeout ms]`、`android-test [...]`（默认跑 `test` 并输出 JUnit 汇总 + 失败清单）。
 
@@ -135,6 +136,19 @@ android-sign app-debug.apk --out app-release.apk
 - 先签后验，返回 `verified` 与 `certSha256`（`apksigner verify --print-certs`）
 - 未配置时返回可操作提示（指向 `signing.json`），提示里不含任何密钥值
 - `android-doctor` 会显示 `apksigner.jar` 是否存在、签名配置是否就绪（只显示路径与别名）
+
+### 安装（系统安装器）
+
+```sh
+android-install app-signed.apk --package com.example.hello
+# 等价 MCP：mcp__android__android_install { apk, packageName }
+```
+
+- 走 DSHA App 桥的 `/app/install`，把 APK 交给**系统安装器**；`OK: installer` 只表示“已请求”，安装与否由用户在设备上确认
+- 之后工具会附带 `installedNow`（`/app/apps?q=<包名>` 的结果），但用户还没确认时它仍是旧版本——这是预期，不是失败
+- `NO_PERMISSION`：DSHA 没有「安装未知应用」授权（系统设置页已打开），允许后再请求一次，不要循环重试
+- `NO_NOTIFICATION`：通知被关且 DSHA 不在前台，安装请求无法呈现；打开通知或把 DSHA 切前台
+- 不支持 `.apks`/`.xapk` 分包；不能经桥覆盖安装 DSHA 自身（会结束 App 与全部会话）
 
 ### 测试汇总
 

@@ -33,7 +33,7 @@
 
 - [x] `android_test`：Gradle `test`（JVM 单测），走同一槽位，汇总 JUnit XML（0.3.0）
 - [x] `android_sign`：release keystore（路径 + 别名从环境/凭据读取，**不进日志**）、`apksigner.jar` 签名与验证（0.3.1）
-- [ ] `android_install`：经 `adb-shell`（守卫通道）安装 APK 到当前用户，禁止 `pm` 直连
+- [x] `android_install`：经 App 桥交给系统安装器（用户确认），禁止 `pm` 直连与静默安装（0.3.4）
 - [ ] 失败时给出可操作错误（未授权 adb、签名不匹配、minSdk 冲突）
 
 **验收**：一条命令完成 `assembleDebug → sign → install → 启动`，且 `android_status` 有对应记录；keystore 不在日志/仓库中出现。
