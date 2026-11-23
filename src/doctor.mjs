@@ -33,10 +33,13 @@ function firstLine(text) {
 }
 
 function runVersion(cmd, args) {
-  // `java -version` prints on stderr, `gradle --version` on stdout.
+  // `java -version` prints on stderr, `gradle --version` on stdout, and the
+  // first line of the latter is a separator, so prefer a version-looking line.
   const result = spawnSync(cmd, args, { encoding: 'utf8', timeout: 15_000 })
   if (result.error) return `error: ${result.error.message}`
-  return firstLine(`${result.stderr ?? ''}${result.stdout ?? ''}`) || `exit ${result.status}`
+  const lines = `${result.stderr ?? ''}${result.stdout ?? ''}`.split('\n').map((line) => line.trim()).filter(Boolean)
+  const version = lines.find((line) => /(Gradle|version)\s+\d/.test(line))
+  return (version ?? lines[0] ?? `exit ${result.status}`).slice(0, 200)
 }
 
 function memory() {
