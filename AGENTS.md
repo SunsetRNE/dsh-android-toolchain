@@ -25,7 +25,9 @@ node bin/android-provision.mjs --pin --write # 回填 sha256（发布前必须�
 node bin/android-provision.mjs --verify-manifest --strict   # 发布门禁
 node bin/android-status.mjs                  # 槽位/已装组件
 node bin/android-doctor.mjs [--full]         # 架构/版本/余量诊断
-sh scripts/smoke.sh                          # 端到端冒烟：供应+APK+JUnit+架构断言
+sh scripts/smoke.sh                          # 真机全量：供应+APK+JUnit+架构断言
+sh scripts/smoke.sh --jvm                    # 纯 Linux 基线：无 APK
+sh scripts/smoke.sh --apk-ci                 # 供 CI：跳过 Android aapt2，尝试 Maven aapt2
 ```
 
 本机验证 MCP 接线（不装插件也能测）：
@@ -43,13 +45,15 @@ DSH_ANDROID_ROOT=/tmp/toolchain node bin/android-broker.mjs   # 然后按 JSON-R
 
 ## 冒烟与 CI
 
-- `scripts/smoke.sh` 是唯一端到端入口；CI 的 `smoke-arm64.yml` 只是 `sudo env "PATH=$PATH" sh scripts/smoke.sh`。
+- `scripts/smoke.sh` 是唯一端到端入口：`device`（默认，含 APK）、`--jvm`（纯 Linux 基线）、`--apk-ci`（跳过 Android aapt2，依赖 qemu 跑 Maven aapt2）。
+- `smoke.sh` 会带 `--wait`（默认 10 分钟，`SMOKE_WAIT_MS` 可调）排队，不要因为本地槽位忙就以为脚本失败。
+- Termux aapt2 需要 `/system/bin/linker64`，**纯 Linux 主机上不可能跑**；CI 只能覆盖到 `--jvm` + 建议性的 qemu 构建，真机 APK 由 `smoke.sh` 全量模式兜底。
 - `examples/` 里的项目必须保持**零第三方依赖**（只有 AGP / JUnit），否则冷缓存 CI 会变慢。
 - 本地改 `bin/`、`src/`、`scripts/`、`toolchain.manifest.json` 或 `examples/` 后，先跑一次 `sh scripts/smoke.sh` 再提交。
 
 ## APK 路径（arm64）
 
-- `scripts/setup-apk.sh` 是唯一入口：cmdline-tools（Java）→ platform/build-tools → Termux arm64 aapt2 包装器。
+- `scripts/setup-apk.sh` 是唯一入口：cmdline-tools（Java）→ platform/build-tools → Termux arm64 aapt2 包装器；`--no-aapt2` 只装 SDK（CI 用）。
 - **不要**把 build-tools 的原生 x86_64 工具当可用；只有 aapt2 被替换，其余 Java 工具（d8/R8/apksigner.jar）才可用。
 - aapt2 的 `.deb` 必须按 sha256 校验：升级时同步改脚本里的 `AAPT2_VERSION` 与 `AAPT2_SHA256`，并跑一次真实 `assembleDebug`。
 - `android-build`/broker 在检测到 `<root>/aapt2/current/bin/aapt2` 时自动加 `-Pandroid.aapt2FromMavenOverride=`；调用方显式传了就不要覆盖。

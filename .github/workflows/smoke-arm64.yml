@@ -1,9 +1,14 @@
 name: smoke-arm64
 
-# The real regression guard: on an arm64 runner this provisions the pinned
-# toolchain, installs the arm64 APK tooling, builds the example APK and runs the
-# example tests. Unit tests alone cannot catch a broken aapt2 wrapper, SDK layout
-# or example project.
+# Regression guard on an arm64 runner.
+#
+# job `jvm` (blocking): provisioning, JUnit build/test, and the doctor contract
+# on aarch64. This is the part that can run on plain Linux.
+#
+# job `apk-qemu` (advisory): tries the full APK build by letting the Maven
+# x86_64 aapt2 run under qemu-user. The arm64 aapt2 we ship is Termux's bionic
+# build and needs /system/bin/linker64, which a GitHub runner does not have, so
+# this job is allowed to fail without failing the workflow.
 on:
   workflow_dispatch:
   push:
@@ -27,28 +32,53 @@ on:
       - '.github/workflows/smoke-arm64.yml'
 
 jobs:
-  smoke:
-    # GitHub-hosted arm64 runner (public repositories).
+  jvm:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
-
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-
       - name: Cache the provisioned toolchain
         uses: actions/cache@v5
         with:
           path: |
             /opt/android-toolchain/sdk
-            /opt/android-toolchain/aapt2
             /opt/android-toolchain/tmp
             /opt/android-toolchain/gradle-home
-          key: android-toolchain-arm64-${{ hashFiles('toolchain.manifest.json', 'examples/**/*.gradle') }}
+          key: android-toolchain-jvm-arm64-${{ hashFiles('toolchain.manifest.json', 'examples/**/*.gradle') }}
+      - name: Smoke (provision + JUnit + doctor)
+        run: sudo env "PATH=$PATH" "DSH_ANDROID_ROOT=/opt/android-toolchain" sh scripts/smoke.sh --jvm
 
-      - name: Smoke (provision + APK + JUnit)
-        # Provisioning writes /opt and /usr/local/bin, so it needs root; PATH must
-        # survive sudo so `node` and the workspace are the same as the checkout.
-        run: sudo env "PATH=$PATH" "DSH_ANDROID_ROOT=/opt/android-toolchain" sh scripts/smoke.sh
+  apk-qemu:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Cache the provisioned toolchain
+        uses: actions/cache@v5
+        with:
+          path: |
+            /opt/android-toolchain/sdk
+            /opt/android-toolchain/tmp
+            /opt/android-toolchain/gradle-home
+          key: android-toolchain-apk-arm64-${{ hashFiles('toolchain.manifest.json', 'examples/**/*.gradle') }}
+      - name: Install qemu-user (x86_64 aapt2 under emulation)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static binfmt-support
+          ls /proc/sys/fs/binfmt_misc | grep -i qemu || true
+      - name: Smoke (provision + APK via qemu + JUnit)
+        run: sudo env "PATH=$PATH" "DSH_ANDROID_ROOT=/opt/android-toolchain" sh scripts/smoke.sh --apk-ci
+      - name: Keep the built APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hello-apk
+          path: examples/hello-apk/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: ignore

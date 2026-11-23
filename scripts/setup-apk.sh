@@ -17,6 +17,12 @@
 # signed Termux repository. Re-pin deliberately when bumping AAPT2_VERSION.
 set -eu
 
+# --no-aapt2: install cmdline-tools/platform/build-tools only. Used on plain
+# Linux arm64 (CI), where the Termux aapt2 cannot run because it needs the
+# Android bionic loader at /system/bin/linker64.
+NO_AAPT2=0
+[ "${1:-}" = "--no-aapt2" ] && NO_AAPT2=1
+
 ROOT=${DSH_ANDROID_ROOT:-/opt/android-toolchain}
 SDK="$ROOT/sdk"
 CACHE="$ROOT/tmp"
@@ -59,7 +65,9 @@ if [ ! -f "$SDK/platforms/$PLATFORM/android.jar" ] || [ ! -d "$SDK/build-tools/$
 fi
 
 # 3. arm64 aapt2 (Termux) + wrapper
-if [ ! -x "$ROOT/aapt2/current/bin/aapt2" ]; then
+if [ "$NO_AAPT2" = "1" ]; then
+  say "skipping the Android aapt2 (needs /system/bin/linker64; CI uses the Maven aapt2)"
+elif [ ! -x "$ROOT/aapt2/current/bin/aapt2" ]; then
   index="$CACHE/termux-Packages"
   [ -f "$index" ] || curl -fsSL -o "$index" "$TERMUX/dists/stable/main/binary-aarch64/Packages"
   mkdir -p "$CACHE/termux-debs" "$CACHE/termux-x"
@@ -97,12 +105,18 @@ WRAPPER
 fi
 
 AAPT2="$ROOT/aapt2/current/bin/aapt2"
-version=$("$AAPT2" version 2>&1 | grep -i "aapt" | tail -n1)
-case "$version" in
-  *aapt*) say "aapt2: $version" ;;
-  *) die "aapt2 did not run: $version" ;;
-esac
+if [ "$NO_AAPT2" = "0" ]; then
+  version=$("$AAPT2" version 2>&1 | grep -i "aapt" | tail -n1)
+  case "$version" in
+    *aapt*) say "aapt2: $version" ;;
+    *) die "aapt2 did not run: $version" ;;
+  esac
+fi
 
 say "SDK: $SDK (platforms/$PLATFORM, build-tools/$BUILD_TOOLS)"
-say "use: android-build assembleDebug --cwd <project>"
-say "android-build injects -Pandroid.aapt2FromMavenOverride=$AAPT2"
+if [ "$NO_AAPT2" = "0" ]; then
+  say "use: android-build assembleDebug --cwd <project>"
+  say "android-build injects -Pandroid.aapt2FromMavenOverride=$AAPT2"
+else
+  say "use: android-build assembleDebug --cwd <project> (aapt2 comes from Google Maven)"
+fi

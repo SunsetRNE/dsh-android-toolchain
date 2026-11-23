@@ -1,11 +1,23 @@
 #!/bin/sh
-# End-to-end smoke: provision the shared toolchain, set up APK tooling, build the
-# example APK, run the example JUnit project, and assert the architecture.
+# End-to-end smoke. Three modes because the Android-only pieces cannot run on a
+# plain Linux arm64 host:
 #
-# Runs on a device (this repo's own maintenance flow) and on the arm64 CI runner:
-#   sh scripts/smoke.sh
-#   sudo env "PATH=$PATH" DSH_ANDROID_ROOT=/opt/android-toolchain sh scripts/smoke.sh
+#   sh scripts/smoke.sh                 # device: full (provision + APK + JUnit + arch)
+#   sh scripts/smoke.sh --jvm           # host: provision + JUnit + doctor (no APK)
+#   sh scripts/smoke.sh --apk-ci        # host: also build the APK, expecting the
+#                                       # Maven x86_64 aapt2 to run via qemu binfmt
+#
+# Why: the arm64 aapt2 we ship is Termux's bionic build and needs
+# /system/bin/linker64, which only exists on an Android device. GitHub's Ubuntu
+# arm64 runner has no Android userland, so `--jvm` is the guaranteed CI baseline
+# and `--apk-ci` is the (qemu-assisted) attempt at the full path.
 set -eu
+
+MODE=${1:-device}
+case "$MODE" in
+  device|--jvm|--apk-ci) ;;
+  *) echo "usage: $0 [--jvm|--apk-ci]" >&2; exit 64 ;;
+esac
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 ROOT=${DSH_ANDROID_ROOT:-/opt/android-toolchain}
@@ -16,33 +28,43 @@ say() { printf '[smoke] %s\n' "$*"; }
 [ -d examples/hello-apk ] || { say "examples/hello-apk is missing"; exit 1; }
 [ -d examples/junit-project ] || { say "examples/junit-project is missing"; exit 1; }
 
-say "root: $ROOT"
+WAIT_MS=${SMOKE_WAIT_MS:-600000}
+
+say "mode: $MODE | root: $ROOT | slot wait: ${WAIT_MS}ms"
 node bin/android-provision.mjs
 
-say "APK toolchain (cmdline-tools + platform + arm64 aapt2)"
-sh scripts/setup-apk.sh
+case "$MODE" in
+  device) sh scripts/setup-apk.sh ;;
+  --apk-ci) sh scripts/setup-apk.sh --no-aapt2 ;;
+  --jvm) sh scripts/setup-apk.sh --no-aapt2 ;;
+esac
 
-say "build the example APK"
-node bin/android-build.mjs assembleDebug --cwd examples/hello-apk --timeout 900000
-
-APK=examples/hello-apk/app/build/outputs/apk/debug/app-debug.apk
-[ -f "$APK" ] || { say "expected $APK after assembleDebug"; exit 1; }
-say "APK: $(wc -c < "$APK") bytes"
+if [ "$MODE" = "device" ] || [ "$MODE" = "--apk-ci" ]; then
+  say "build the example APK"
+  node bin/android-build.mjs assembleDebug --cwd examples/hello-apk --timeout 900000 --wait "$WAIT_MS"
+  APK=examples/hello-apk/app/build/outputs/apk/debug/app-debug.apk
+  [ -f "$APK" ] || { say "expected $APK after assembleDebug"; exit 1; }
+  say "APK: $(wc -c < "$APK") bytes"
+else
+  say "skipping the APK build (no Android aapt2 on a plain Linux host)"
+fi
 
 say "run the example tests"
-node bin/android-test.mjs --cwd examples/junit-project --timeout 900000
+node bin/android-test.mjs --cwd examples/junit-project --timeout 900000 --wait "$WAIT_MS"
 
-say "architecture and signing readiness"
+say "architecture and toolchain assertions"
 node bin/android-doctor.mjs > /tmp/android-toolchain-doctor.json
-node -e '
+SMOKE_MODE="$MODE" node -e '
 const d = require("/tmp/android-toolchain-doctor.json")
+const mode = process.env.SMOKE_MODE
 const fail = (message) => { console.error("[smoke] " + message); process.exit(1) }
 if (d.checks.java.arch !== "aarch64") fail("java is " + d.checks.java.arch + ", not aarch64")
-if (!d.checks.aapt2.version) fail("aapt2 is not installed")
 if (!d.checks.apksigner.path) fail("apksigner.jar is missing")
+if (!d.checks.sdk.platforms.length) fail("no Android platform installed")
+if (mode === "device" && !d.checks.aapt2.version) fail("aapt2 is not installed")
 console.log("[smoke] java:", d.checks.java.version)
-console.log("[smoke] aapt2:", d.checks.aapt2.version)
+if (d.checks.aapt2.version) console.log("[smoke] aapt2:", d.checks.aapt2.version)
 console.log("[smoke] platforms:", d.checks.sdk.platforms.join(","))
-' || exit 1
+'
 
-say "ok"
+say "ok ($MODE)"
