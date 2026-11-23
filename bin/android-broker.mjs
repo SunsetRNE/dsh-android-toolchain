@@ -10,7 +10,7 @@ import { existsSync, readFileSync, readlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { serveStdio } from '../src/mcp.mjs'
-import { binPath, currentPath, resolveRoot } from '../src/paths.mjs'
+import { aapt2Override, binPath, currentPath, resolveRoot, sdkRoot } from '../src/paths.mjs'
 import { LIMITS, readSlotState, runInSlot } from '../src/slot.mjs'
 import { doctor } from '../src/doctor.mjs'
 import { loadManifest } from '../src/manifest.mjs'
@@ -26,8 +26,8 @@ const json = (value) => JSON.stringify(value, null, 2)
 function buildEnv() {
   const path = [binPath(root, '.'), process.env.PATH ?? ''].filter(Boolean).join(':')
   const env = { ...process.env, PATH: path, JAVA_HOME: join(root, 'jdk', 'current'), GRADLE_USER_HOME: join(root, 'gradle-home') }
-  const sdk = currentPath(root, 'sdk')
-  if (existsSync(sdk)) {
+  const sdk = sdkRoot(root)
+  if (sdk) {
     env.ANDROID_HOME = sdk
     env.ANDROID_SDK_ROOT = sdk
   }
@@ -120,10 +120,14 @@ const tools = [
         return { isError: true, text: `gradle is not provisioned under ${root}. Run android_provision first.` }
       }
       const tasks = args?.tasks?.length ? args.tasks : [args?.task ?? 'build']
+      const extra = [...(args?.args ?? [])]
+      const override = aapt2Override(root)
+      const hasOverride = extra.some((item) => item.startsWith('-Pandroid.aapt2FromMavenOverride='))
+      if (override && !hasOverride) extra.push(`-Pandroid.aapt2FromMavenOverride=${override}`)
       const result = await runInSlot({
         root,
         cmd: gradle,
-        args: [...tasks, ...(args?.args ?? [])],
+        args: [...tasks, ...extra],
         cwd: args?.cwd ?? process.cwd(),
         env: buildEnv(),
         owner: args?.owner ?? `build:${process.pid}`,

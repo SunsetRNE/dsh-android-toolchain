@@ -71,6 +71,20 @@ export function binPath(root, tool) {
   return join(root, 'bin', tool)
 }
 
+/** Android SDK root: `<root>/sdk` (sdkmanager layout) or a `current` link. */
+export function sdkRoot(root) {
+  for (const candidate of [join(root, 'sdk'), join(root, 'sdk', 'current')]) {
+    if (existsSync(join(candidate, 'platforms')) || existsSync(join(candidate, 'build-tools'))) return candidate
+  }
+  return null
+}
+
+/** The arm64 aapt2 override, when the APK setup script installed one. */
+export function aapt2Override(root) {
+  const wrapper = join(root, 'aapt2', 'current', 'bin', 'aapt2')
+  return existsSync(wrapper) ? wrapper : null
+}
+
 /** Marker file that makes a component version "installed". */
 export function installedMarker(root, name, version) {
   return join(root, name, version, '.installed.json')

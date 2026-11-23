@@ -90,7 +90,7 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 | 单次构建超时 | 20 分钟（默认） | 防止卡死占槽 |
 | 优先级 | `nice 19` | 不抢前台 |
 | CPU | `taskset -c 0-3` | 给 UI 留核 |
-| JVM | `-Xmx1024m`、Metaspace 512m、`--max-workers=2`、`parallel=false` | 写进共享 `gradle.properties` |
+| JVM | `-Xmx1536m`、Metaspace 512m、`--max-workers=2`、`parallel=false` | 写进共享 `gradle.properties`；AGP 比纯 JVM 编译更吃内存 |
 | 不用 `RLIMIT_AS` | — | JVM 需要大段虚拟地址空间，`prlimit --as` 会让它起不来；内存靠 `-Xmx` + 单槽 |
 
 `android_status` 的 `holder.json` 里记录了 owner（会话/调用方标签）、pid、开始时间，谁占着槽一目了然。
@@ -101,13 +101,46 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 - 同一个构建经 `mcp__android__android_build` 调用成功（MCP 客户端 → broker → 单槽 → Gradle，2.7 s 增量）
 - `android-doctor` 报告 `java arch = aarch64`、槽位空闲
 
+## 真打 APK（aarch64，已实测）
+
+官方 build-tools 的 `aapt2` 只有 linux/osx/windows **x86_64** classifier，而 AGP 总是从 Google Maven 取它——这是 aarch64 上唯一真正卡住的地方。把它换掉就行，其余（`d8`/R8、`zipalign`、签名）都是 JVM 里的 Java，能直接跑。
+
+```sh
+sh scripts/setup-apk.sh        # 一次性：cmdline-tools + platform 35 + build-tools 35 + arm64 aapt2
+android-build assembleDebug --cwd <你的 Android 项目>
+```
+
+`setup-apk.sh` 做的事：
+
+1. 安装 Android `cmdline-tools`（纯 Java，arm64 可跑）→ `<root>/sdk/cmdline-tools/latest`
+2. `sdkmanager` 安装 `platforms;android-35` 与 `build-tools;35.0.0`（接受 licenses；build-tools 里的原生工具是 x86_64，我们不使用）
+3. 从 Termux 官方仓库取 **aarch64 aapt2**（`16.0.0.4-4`，sha256 固定）及其依赖库，装上 `bin/aapt2` 包装器：
+   `/system/bin/linker64` + `LD_LIBRARY_PATH=<prefix>/lib`（Termux 的 aapt2 是 bionic 链接，proot 里必须这样跑）
+4. `android-build` 自动追加 `-Pandroid.aapt2FromMavenOverride=<root>/aapt2/current/bin/aapt2`
+
+本机实测（2026-11-23）：
+
+| 项 | 值 |
+|---|---|
+| 项目 | 最小 `com.android.application`（compileSdk 35 / minSdk 24，无第三方依赖） |
+| 工具 | AGP **8.7.3**、Gradle **8.10.2**、JDK **21.0.5**、aapt2 `2.20-android-16.0.0_r4` |
+| 结果 | `BUILD SUCCESSFUL`，冷构建 2 min 1 s（含依赖下载），产物 `app-debug.apk` 5.6 KB |
+| 校验 | `aapt2 dump badging` 显示 `package=com.example.hello`、`minSdk 24`、`targetSdk 35`；`apksigner.jar verify` 通过 |
+
+已知无害噪音：AGP 日志会出现 `AAPT2 bin Daemon #0: Unexpected error output: WARNING: linker: ... ld.config.txt`——这是 bionic loader 的提示，构建不受影响。
+
+信任边界：aapt2 的 `.deb` 在脚本里按 sha256 校验；依赖库来自同一个 Termux 签名仓库。升级 aapt2 必须同时改 `AAPT2_VERSION` 与 `AAPT2_SHA256`（`AGENTS.md` 的发布清单里有这条）。
+
+仍然不建议的路：把官方 build-tools 整个塞进来（x86_64 原生工具会 `Exec format error`），或往 `/etc/profile.d` 写环境变量（bash 工具不读 rc）。NDK（C/C++）依旧不可用，需要远程 x86_64 构建机。
+
 ## aarch64 的现实边界
 
 本机是 **aarch64 + proot**，无 x86 模拟：
 
 - ✅ arm64 JDK + Gradle + Kotlin/JVM 编译、`test`、静态检查；
-- ❌ 官方 Android SDK `build-tools`（aapt2/d8/zipalign）和 NDK 主机工具链都是 **linux-x86_64 ELF**，执行不了；manifest 里 `sdk`/`ndk` 默认关闭并写明原因；
-- 真要打 APK：换成可信的 arm64 build-tools（并在 manifest 里 pin sha256），或交给远程 x86_64 构建机。
+- ✅ **AGP 打 APK**：唯一缺的是 aapt2，`scripts/setup-apk.sh` 用 Termux 的 arm64 aapt2 + `android.aapt2FromMavenOverride` 解决（见上一节实测）；
+- ❌ 官方 SDK `build-tools` 里的其它**原生**工具（`aidl`、`zipalign` 等 x86_64）和 NDK 主机工具链仍然执行不了；manifest 里 `sdk`/`ndk` 默认关闭并写明原因（SDK 由 `setup-apk.sh` 以 Java 工具方式提供）；
+- ❌ 用 `aidl` 的项目、需要 NDK 的原生模块：交给远程 x86_64 构建机。
 
 ## 配置
 
@@ -144,3 +177,6 @@ node bin/android-provision.mjs --manifest m.json --root /tmp/x --no-link   # 用
 | `sha256 mismatch` | 上游重发了包；重新 `--pin --write` 并 review diff |
 | `java is x86_64, not aarch64` | 装错了架构的 JDK，`android-doctor` 会直接报出来 |
 | 供应失败但插件已装 | 手动 `android-provision`；网络受限时把包放进 `<root>/tmp` 并改 manifest 为 `file://` 来源 |
+| `aapt2 ... Exec format error` | 用的是 build-tools 里的 x86_64 aapt2；跑 `sh scripts/setup-apk.sh` 并确认 `android-build` 注入了 override |
+| `AAPT2 ... ld.config.txt` 警告 | bionic loader 的无害提示，构建正常 |
+| `sdkmanager` 报找不到 java | 共享区没有 JDK；先 `android-provision`（`setup-apk.sh` 会检查） |

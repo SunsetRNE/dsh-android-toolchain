@@ -40,10 +40,19 @@ DSH_ANDROID_ROOT=/tmp/toolchain node bin/android-broker.mjs   # 然后按 JSON-R
 3. **加 MCP 工具**：在 `bin/android-broker.mjs` 的 `tools` 里加 schema + handler，补 `tests/mcp.test.mjs` 的 `tools/list` 断言，更新 README 工具表。
 4. **改 `cordis.patch.yml`**：确认 `toolCallTimeoutMs`（构建可能 20 分钟）、`failOnStartupError: false`（broker 缺失时不要拖垮启动）仍成立。
 
+## APK 路径（arm64）
+
+- `scripts/setup-apk.sh` 是唯一入口：cmdline-tools（Java）→ platform/build-tools → Termux arm64 aapt2 包装器。
+- **不要**把 build-tools 的原生 x86_64 工具当可用；只有 aapt2 被替换，其余 Java 工具（d8/R8/apksigner.jar）才可用。
+- aapt2 的 `.deb` 必须按 sha256 校验：升级时同步改脚本里的 `AAPT2_VERSION` 与 `AAPT2_SHA256`，并跑一次真实 `assembleDebug`。
+- `android-build`/broker 在检测到 `<root>/aapt2/current/bin/aapt2` 时自动加 `-Pandroid.aapt2FromMavenOverride=`；调用方显式传了就不要覆盖。
+- SDK 布局在 `<root>/sdk`（sdkmanager 原生布局，无 `current` 软链），`sdkRoot()` 同时兼容 `<root>/sdk/current`。
+
 ## 发布清单
 
 - [ ] `node --test tests/*.test.mjs` 全绿
 - [ ] `--verify-manifest --strict` 通过（每个 enabled 组件 pinned 且来源可达）
+- [ ] APK 脚本仍可跑：`sh scripts/setup-apk.sh` && 真实 `assembleDebug` 通过
 - [ ] `package.json` 版本号 + `CHANGELOG`（若启用）已更新
 - [ ] 打 `vX.Y.Z` tag；release 工作流只出 tarball + `SHA256SUMS`（**不要加 npm publish**：维护者无法注册 npm）
 - [ ] 发布后在一台设备上 `dsha-plugin import <tarball>` 并重启 Web，新会话里 `mcp__android__android_doctor` 架构为 `aarch64`

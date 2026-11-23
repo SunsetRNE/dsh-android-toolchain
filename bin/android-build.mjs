@@ -6,7 +6,7 @@
  */
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { binPath, resolveRoot } from '../src/paths.mjs'
+import { aapt2Override, binPath, resolveRoot, sdkRoot } from '../src/paths.mjs'
 import { runInSlot } from '../src/slot.mjs'
 
 const argv = process.argv.slice(2)
@@ -37,6 +37,16 @@ const env = {
   JAVA_HOME: join(root, 'jdk', 'current'),
   GRADLE_USER_HOME: join(root, 'gradle-home'),
 }
+const sdk = sdkRoot(root)
+if (sdk) {
+  env.ANDROID_HOME = sdk
+  env.ANDROID_SDK_ROOT = sdk
+}
+// AGP always resolves aapt2 from Google Maven (x86_64 only). On aarch64 the
+// setup script installs an arm64 build; hand it over unless the caller did.
+const override = aapt2Override(root)
+const hasOverride = tasks.some((task) => task.startsWith('-Pandroid.aapt2FromMavenOverride='))
+if (override && !hasOverride) tasks.push(`-Pandroid.aapt2FromMavenOverride=${override}`)
 
 const result = await runInSlot({
   root,

@@ -7,7 +7,7 @@
 import { spawnSync } from 'node:child_process'
 import { readFileSync, readdirSync, realpathSync, statfsSync } from 'node:fs'
 import { join } from 'node:path'
-import { currentPath, resolveRoot } from './paths.mjs'
+import { aapt2Override, currentPath, resolveRoot, sdkRoot } from './paths.mjs'
 import { readSlotState } from './slot.mjs'
 import { components, enabledComponents, loadManifest } from './manifest.mjs'
 
@@ -32,14 +32,15 @@ function firstLine(text) {
   return String(text ?? '').trim().split('\n')[0]?.slice(0, 200) ?? ''
 }
 
-function runVersion(cmd, args) {
-  // `java -version` prints on stderr, `gradle --version` on stdout, and the
-  // first line of the latter is a separator, so prefer a version-looking line.
+function runVersion(cmd, args, prefer) {
+  // `java -version` prints on stderr, `gradle --version` on stdout, and aapt2
+  // prints its version plus a linker warning on stderr, so pick deliberately.
   const result = spawnSync(cmd, args, { encoding: 'utf8', timeout: 15_000 })
   if (result.error) return `error: ${result.error.message}`
   const lines = `${result.stderr ?? ''}${result.stdout ?? ''}`.split('\n').map((line) => line.trim()).filter(Boolean)
-  const version = lines.find((line) => /(Gradle|version)\s+\d/.test(line))
-  return (version ?? lines[0] ?? `exit ${result.status}`).slice(0, 200)
+  const match = prefer ? lines.find((line) => prefer.test(line)) : undefined
+  const fallback = lines.find((line) => /(Gradle|aapt|openjdk|version)\s+[^\s]*\d/i.test(line))
+  return (match ?? fallback ?? lines[0] ?? `exit ${result.status}`).slice(0, 200)
 }
 
 function memory() {
@@ -72,10 +73,16 @@ export function doctor({ root: rootOption, manifest = loadManifest(), full = fal
 
   const javaHome = join(root, 'jdk', 'current')
   const checks = {
-    java: { path: join(javaHome, 'bin', 'java'), arch: elfMachine(join(javaHome, 'bin', 'java')), version: runVersion(join(javaHome, 'bin', 'java'), ['-version']) },
-    gradle: { path: join(root, 'bin', 'gradle'), arch: elfMachine(join(root, 'bin', 'gradle')), version: full ? runVersion(join(root, 'bin', 'gradle'), ['--version']) : undefined },
+    java: { path: join(javaHome, 'bin', 'java'), arch: elfMachine(join(javaHome, 'bin', 'java')), version: runVersion(join(javaHome, 'bin', 'java'), ['-version'], /version/i) },
+    gradle: { path: join(root, 'bin', 'gradle'), arch: elfMachine(join(root, 'bin', 'gradle')), version: full ? runVersion(join(root, 'bin', 'gradle'), ['--version'], /Gradle \d/) : undefined },
     broker: { path: join(root, 'bin', 'android-broker'), arch: elfMachine(join(root, 'bin', 'android-broker')) },
   }
+  const aapt2 = aapt2Override(root)
+  checks.aapt2 = aapt2
+    ? { path: aapt2, version: runVersion(aapt2, ['version'], /aapt/i) }
+    : { path: null, installed: false }
+  const sdk = sdkRoot(root)
+  checks.sdk = sdk ? { path: sdk, platforms: listDirs(join(sdk, 'platforms')), buildTools: listDirs(join(sdk, 'build-tools')) } : { path: null, installed: false }
 
   let disk = {}
   try {
@@ -101,6 +108,14 @@ export function doctor({ root: rootOption, manifest = loadManifest(), full = fal
     disk,
     memory: memory(),
     warnings,
+  }
+}
+
+function listDirs(path) {
+  try {
+    return readdirSync(path).sort()
+  } catch {
+    return []
   }
 }
 
