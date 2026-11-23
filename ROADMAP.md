@@ -31,7 +31,7 @@
 
 **为什么**：现在只到“产出 APK”，安装到手机、签名发布、跑单测还要人工。
 
-- [ ] `android_test`：Gradle `test`（JVM 单测），走同一槽位
+- [x] `android_test`：Gradle `test`（JVM 单测），走同一槽位，汇总 JUnit XML（0.3.0）
 - [ ] `android_sign`：release keystore（路径 + 别名从环境/凭据读取，**不进日志**）、`apksigner.jar` 签名与验证
 - [ ] `android_install`：经 `adb-shell`（守卫通道）安装 APK 到当前用户，禁止 `pm` 直连
 - [ ] 失败时给出可操作错误（未授权 adb、签名不匹配、minSdk 冲突）

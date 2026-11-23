@@ -21,6 +21,7 @@ const take = (flag, fallback) => {
 
 const holderPath = take('--holder')
 const resultPath = take('--result')
+const queueEntry = take('--queue-entry')
 const owner = take('--owner', 'unknown')
 const timeoutMs = Number(take('--timeout', '1200000'))
 const nice = take('--nice', '19')
@@ -34,6 +35,9 @@ if (!resultPath || !cmd) {
   console.error('slot-holder: missing --result or command')
   process.exit(64)
 }
+
+// Holding the lock means this caller is no longer waiting.
+if (queueEntry) rmSync(queueEntry, { force: true })
 
 const startedAt = new Date().toISOString()
 writeFileSync(

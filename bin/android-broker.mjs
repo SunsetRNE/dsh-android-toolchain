@@ -10,9 +10,11 @@ import { existsSync, readFileSync, readlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { serveStdio } from '../src/mcp.mjs'
-import { aapt2Override, binPath, currentPath, resolveRoot, sdkRoot } from '../src/paths.mjs'
+import { binPath, currentPath, resolveRoot } from '../src/paths.mjs'
+import { buildEnv, withAapt2Override } from '../src/env.mjs'
 import { LIMITS, readSlotState, runInSlot } from '../src/slot.mjs'
 import { doctor } from '../src/doctor.mjs'
+import { summarize } from '../src/junit.mjs'
 import { loadManifest } from '../src/manifest.mjs'
 import { readHistory } from '../src/history.mjs'
 
@@ -24,18 +26,7 @@ const PROVISIONER = fileURLToPath(new URL('./android-provision.mjs', import.meta
 const tail = (text, limit = 8000) => (text.length > limit ? `…(truncated)\n${text.slice(-limit)}` : text)
 const json = (value) => JSON.stringify(value, null, 2)
 
-function buildEnv() {
-  const path = [binPath(root, '.'), process.env.PATH ?? ''].filter(Boolean).join(':')
-  const env = { ...process.env, PATH: path, JAVA_HOME: join(root, 'jdk', 'current'), GRADLE_USER_HOME: join(root, 'gradle-home') }
-  const sdk = sdkRoot(root)
-  if (sdk) {
-    env.ANDROID_HOME = sdk
-    env.ANDROID_SDK_ROOT = sdk
-  }
-  const ndk = currentPath(root, 'ndk')
-  if (existsSync(ndk)) env.ANDROID_NDK_HOME = ndk
-  return env
-}
+const env = () => buildEnv(root)
 
 const tools = [
   {
@@ -93,7 +84,7 @@ const tools = [
         cmd: process.execPath,
         args: [PROVISIONER, ...extra],
         owner: `provision:${process.pid}`,
-        env: buildEnv(),
+        env: env(),
       })
       return {
         text: json({ exitCode: result.exitCode, busy: Boolean(result.busy), reason: result.reason, output: tail(result.stdout), errors: tail(result.stderr) }),
@@ -123,15 +114,12 @@ const tools = [
       }
       const tasks = args?.tasks?.length ? args.tasks : [args?.task ?? 'build']
       const extra = [...(args?.args ?? [])]
-      const override = aapt2Override(root)
-      const hasOverride = extra.some((item) => item.startsWith('-Pandroid.aapt2FromMavenOverride='))
-      if (override && !hasOverride) extra.push(`-Pandroid.aapt2FromMavenOverride=${override}`)
       const result = await runInSlot({
         root,
         cmd: gradle,
-        args: [...tasks, ...extra],
+        args: withAapt2Override(root, [...tasks, ...extra]),
         cwd: args?.cwd ?? process.cwd(),
-        env: buildEnv(),
+        env: env(),
         owner: args?.owner ?? `build:${process.pid}`,
         timeoutMs: args?.timeoutMs,
       })
@@ -145,6 +133,54 @@ const tools = [
           reason: result.reason,
           waitedMs: result.waitedMs,
           durationMs: result.durationMs,
+          output: tail(result.stdout),
+          errors: tail(result.stderr),
+        }),
+      }
+    },
+  },
+  {
+    name: 'android_test',
+    description: 'Run Gradle tests through the single slot and summarize the JUnit XML (tests, failures, errors, skipped, failing cases). Returns exit code, buildId and the output tail.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tasks: { type: 'array', items: { type: 'string' }, description: 'Gradle test tasks; default: test.' },
+        args: { type: 'array', items: { type: 'string' }, description: 'Extra Gradle arguments, e.g. --tests or -Pfoo=bar.' },
+        cwd: { type: 'string', description: 'Project directory; defaults to the broker cwd.' },
+        timeoutMs: { type: 'integer' },
+        owner: { type: 'string' },
+      },
+      additionalProperties: false,
+    },
+    handler: async (args) => {
+      const gradle = binPath(root, 'gradle')
+      if (!existsSync(gradle)) {
+        return { isError: true, text: `gradle is not provisioned under ${root}. Run android_provision first.` }
+      }
+      const projectDir = args?.cwd ?? process.cwd()
+      const tasks = args?.tasks?.length ? args.tasks : ['test']
+      const result = await runInSlot({
+        root,
+        cmd: gradle,
+        args: withAapt2Override(root, [...tasks, ...(args?.args ?? [])]),
+        cwd: projectDir,
+        env: env(),
+        owner: args?.owner ?? `test:${process.pid}`,
+        timeoutMs: args?.timeoutMs,
+      })
+      const summary = result.busy ? null : summarize(projectDir)
+      return {
+        isError: !result.ok,
+        text: json({
+          buildId: result.id,
+          exitCode: result.exitCode,
+          busy: Boolean(result.busy),
+          timedOut: Boolean(result.timedOut),
+          reason: result.reason,
+          waitedMs: result.waitedMs,
+          durationMs: result.durationMs,
+          summary,
           output: tail(result.stdout),
           errors: tail(result.stderr),
         }),

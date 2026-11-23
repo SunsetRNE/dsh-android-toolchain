@@ -5,8 +5,8 @@
  * behind agent builds instead of racing them.
  */
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
-import { aapt2Override, binPath, resolveRoot, sdkRoot } from '../src/paths.mjs'
+import { binPath, resolveRoot } from '../src/paths.mjs'
+import { buildEnv, withAapt2Override } from '../src/env.mjs'
 import { runInSlot } from '../src/slot.mjs'
 
 const argv = process.argv.slice(2)
@@ -30,30 +30,12 @@ if (!existsSync(gradle)) {
   process.exit(1)
 }
 
-const path = [join(root, 'bin'), process.env.PATH ?? ''].filter(Boolean).join(':')
-const env = {
-  ...process.env,
-  PATH: path,
-  JAVA_HOME: join(root, 'jdk', 'current'),
-  GRADLE_USER_HOME: join(root, 'gradle-home'),
-}
-const sdk = sdkRoot(root)
-if (sdk) {
-  env.ANDROID_HOME = sdk
-  env.ANDROID_SDK_ROOT = sdk
-}
-// AGP always resolves aapt2 from Google Maven (x86_64 only). On aarch64 the
-// setup script installs an arm64 build; hand it over unless the caller did.
-const override = aapt2Override(root)
-const hasOverride = tasks.some((task) => task.startsWith('-Pandroid.aapt2FromMavenOverride='))
-if (override && !hasOverride) tasks.push(`-Pandroid.aapt2FromMavenOverride=${override}`)
-
 const result = await runInSlot({
   root,
   cmd: gradle,
-  args: tasks,
+  args: withAapt2Override(root, tasks),
   cwd: cwd ?? process.cwd(),
-  env,
+  env: buildEnv(root),
   owner,
   timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : undefined,
   waitMs: Number.isFinite(waitMs) && waitMs > 0 ? waitMs : undefined,

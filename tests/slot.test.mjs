@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { EXIT_BUSY, runInSlot } from '../src/slot.mjs'
+import { EXIT_BUSY, readSlotState, runInSlot } from '../src/slot.mjs'
 
 const root = mkdtempSync(join(tmpdir(), 'android-slot-'))
 test.after(() => rmSync(root, { recursive: true, force: true }))
@@ -49,4 +49,17 @@ test('a crashing command reports its exit code', async () => {
   const result = await runInSlot({ ...options, cmd: 'sh', args: ['-c', 'echo boom >&2; exit 7'], owner: 't', waitMs: 10_000 })
   assert.equal(result.exitCode, 7)
   assert.match(result.stderr, /boom/)
+})
+
+test('a waiting caller does not erase the running build metadata', async () => {
+  const running = runInSlot({ ...options, cmd: 'sh', args: ['-c', 'sleep 1.2'], owner: 'holder', waitMs: 10_000 })
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  assert.equal(readSlotState(root).holder.owner, 'holder')
+
+  const blocked = await runInSlot({ ...options, cmd: 'sh', args: ['-c', 'true'], owner: 'waiter', waitMs: 250 })
+  assert.equal(blocked.busy, true)
+  assert.equal(readSlotState(root).holder.owner, 'holder', 'busy attempt kept the holder metadata')
+  assert.deepEqual(readSlotState(root).queue, [], 'the running build is not a waiter')
+
+  await running
 })

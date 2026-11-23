@@ -150,6 +150,7 @@ export async function runInSlot({
     HOLDER,
     '--holder', paths.holder,
     '--result', resultFile,
+    '--queue-entry', entry,
     '--owner', owner,
     '--timeout', String(timeoutMs ?? LIMITS.timeoutMs),
     '--nice', String(nice ?? LIMITS.nice),
@@ -174,7 +175,8 @@ export async function runInSlot({
   })
 
   rmSync(entry, { force: true })
-  rmSync(paths.holder, { force: true })
+  // holder.json belongs to the running build (written by the holder, removed by
+  // its finish()); a failed/busy caller must not erase someone else's metadata.
 
   let result = null
   try {
@@ -190,6 +192,7 @@ export async function runInSlot({
         exitCode: code,
         reason: `slot busy: no turn within ${waitSeconds}s`,
         waitedMs: Date.now() - startedMs,
+        durationMs: 0,
         stdout: '',
         stderr: flockStderr.trim(),
       }, 'busy')

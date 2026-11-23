@@ -1,6 +1,6 @@
 {
   "name": "dsh-android-toolchain",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Shared Android/JVM toolchain provisioning plus a single-slot build broker (MCP server) for DeepSeek Harness on aarch64.",
   "license": "MIT",
   "type": "module",
@@ -12,7 +12,8 @@
     "android-provision": "bin/android-provision.mjs",
     "android-build": "bin/android-build.mjs",
     "android-status": "bin/android-status.mjs",
-    "android-doctor": "bin/android-doctor.mjs"
+    "android-doctor": "bin/android-doctor.mjs",
+    "android-test": "bin/android-test.mjs"
   },
   "files": [
     "AGENTS.md",

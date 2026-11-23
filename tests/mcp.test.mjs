@@ -53,7 +53,7 @@ test('broker speaks MCP: initialize, tools/list, tools/call', async () => {
 
     const listed = await request('tools/list', {})
     const names = listed.result.tools.map((tool) => tool.name).sort()
-    assert.deepEqual(names, ['android_build', 'android_doctor', 'android_provision', 'android_status'])
+    assert.deepEqual(names, ['android_build', 'android_doctor', 'android_provision', 'android_status', 'android_test'])
     for (const tool of listed.result.tools) assert.equal(tool.inputSchema.type, 'object')
 
     const status = await request('tools/call', { name: 'android_status', arguments: {} })

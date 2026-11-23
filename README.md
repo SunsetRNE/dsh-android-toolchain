@@ -78,8 +78,9 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 | `mcp__android__android_doctor` | java/gradle 的**真实 ELF 架构**、版本、磁盘/内存余量、供应告警 |
 | `mcp__android__android_provision` | 按 manifest 安装/修复（幂等、校验 sha256、走单槽） |
 | `mcp__android__android_build` | 跑一个/多个 Gradle task，返回退出码与输出尾部 |
+| `mcp__android__android_test` | 跑 Gradle 测试并汇总 JUnit XML：通过/失败/错误/跳过 + 失败用例名与信息 |
 
-非 agent 入口（同一把锁）：`android-build <task...> [--cwd DIR] [--timeout ms]`。
+非 agent 入口（同一把锁）：`android-build <task...> [--cwd DIR] [--timeout ms]`、`android-test [...]`（默认跑 `test` 并输出 JUnit 汇总 + 失败清单）。
 
 ## 资源上限
 
@@ -94,6 +95,21 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 | 不用 `RLIMIT_AS` | — | JVM 需要大段虚拟地址空间，`prlimit --as` 会让它起不来；内存靠 `-Xmx` + 单槽 |
 
 `android_status` 的 `holder.json` 里记录了 owner（会话/调用方标签）、pid、开始时间，谁占着槽一目了然。
+
+### 测试汇总
+
+`android_test`（或 `android-test`）跑完 Gradle 后读取 `**/build/test-results/**/*.xml`，返回：
+
+```json
+{"tests": 12, "failures": 1, "errors": 0, "skipped": 2,
+ "failing": [{"suite": "com.example.CalcTest", "classname": "...", "test": "adds", "kind": "failure",
+              "message": "expected:<2> but was:<3>"}]}
+```
+
+- 不使用控制台输出做判断，避免 Gradle 彩色/换行带来的误判
+- 失败清单最多 20 条，每条信息截断到 500 字符
+- 无测试结果（`NO-SOURCE`）时返回全 0，而不是报错
+- 退出码仍是 Gradle 的，CI 可直接用
 
 ### 构建历史
 
