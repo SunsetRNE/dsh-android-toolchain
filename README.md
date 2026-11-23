@@ -79,6 +79,7 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 | `mcp__android__android_provision` | 按 manifest 安装/修复（幂等、校验 sha256、走单槽） |
 | `mcp__android__android_build` | 跑一个/多个 Gradle task，返回退出码与输出尾部 |
 | `mcp__android__android_test` | 跑 Gradle 测试并汇总 JUnit XML：通过/失败/错误/跳过 + 失败用例名与信息 |
+| `mcp__android__android_sign` | 用 release keystore + `apksigner.jar` 签名并验证，返回证书 SHA-256 |
 
 非 agent 入口（同一把锁）：`android-build <task...> [--cwd DIR] [--timeout ms]`、`android-test [...]`（默认跑 `test` 并输出 JUnit 汇总 + 失败清单）。
 
@@ -95,6 +96,32 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 | 不用 `RLIMIT_AS` | — | JVM 需要大段虚拟地址空间，`prlimit --as` 会让它起不来；内存靠 `-Xmx` + 单槽 |
 
 `android_status` 的 `holder.json` 里记录了 owner（会话/调用方标签）、pid、开始时间，谁占着槽一目了然。
+
+### 签名（release）
+
+签名材料**不通过工具参数传递**（参数会进对话记录），只从共享区配置或环境变量读取：
+
+```json
+// /opt/android-toolchain/signing.json   (chmod 600)
+{
+  "keystore": "/root/keys/release.jks",
+  "alias": "release",
+  "storePasswordFile": "/root/keys/release.pass"
+}
+```
+
+或环境变量：`ANDROID_KEYSTORE`、`ANDROID_KEY_ALIAS`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_PASSWORD`（后者缺省时复用前者）。
+
+```sh
+android-sign app-debug.apk --out app-release.apk
+# 等价 MCP：mcp__android__android_sign { apk, out }
+```
+
+- 密码只以 `--ks-pass env:ANDROID_KS_PASS` 传给 apksigner，`ps` 和日志里看不到
+- 拒绝原地签名，输出默认 `<name>-signed.apk`
+- 先签后验，返回 `verified` 与 `certSha256`（`apksigner verify --print-certs`）
+- 未配置时返回可操作提示（指向 `signing.json`），提示里不含任何密钥值
+- `android-doctor` 会显示 `apksigner.jar` 是否存在、签名配置是否就绪（只显示路径与别名）
 
 ### 测试汇总
 
@@ -210,3 +237,5 @@ node bin/android-provision.mjs --manifest m.json --root /tmp/x --no-link   # 用
 | `aapt2 ... Exec format error` | 用的是 build-tools 里的 x86_64 aapt2；跑 `sh scripts/setup-apk.sh` 并确认 `android-build` 注入了 override |
 | `AAPT2 ... ld.config.txt` 警告 | bionic loader 的无害提示，构建正常 |
 | `sdkmanager` 报找不到 java | 共享区没有 JDK；先 `android-provision`（`setup-apk.sh` 会检查） |
+| `apksigner.jar not found` | 没跑过 `scripts/setup-apk.sh`，或 build-tools 缺失 |
+| `signing is not configured` | 按提示建 `<root>/signing.json`（chmod 600）或设置 `ANDROID_*` 环境变量；**不要把密码发到对话里** |

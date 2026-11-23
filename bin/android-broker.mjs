@@ -15,6 +15,7 @@ import { buildEnv, withAapt2Override } from '../src/env.mjs'
 import { LIMITS, readSlotState, runInSlot } from '../src/slot.mjs'
 import { doctor } from '../src/doctor.mjs'
 import { summarize } from '../src/junit.mjs'
+import { signApk } from '../src/signing.mjs'
 import { loadManifest } from '../src/manifest.mjs'
 import { readHistory } from '../src/history.mjs'
 
@@ -184,6 +185,39 @@ const tools = [
           output: tail(result.stdout),
           errors: tail(result.stderr),
         }),
+      }
+    },
+  },
+  {
+    name: 'android_sign',
+    description: 'Sign an APK with the configured release keystore through apksigner.jar and verify the signature. Passwords come from <root>/signing.json or ANDROID_* environment variables and are never accepted as arguments.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        apk: { type: 'string', description: 'APK to sign (never modified in place).' },
+        out: { type: 'string', description: 'Output path; defaults to <name>-signed.apk next to the input.' },
+        keystore: { type: 'string', description: 'Override the keystore path from the signing config.' },
+        alias: { type: 'string', description: 'Override the key alias from the signing config.' },
+        timeoutMs: { type: 'integer' },
+        owner: { type: 'string' },
+      },
+      required: ['apk'],
+      additionalProperties: false,
+    },
+    handler: async (args) => {
+      try {
+        const result = await signApk({
+          root,
+          apk: args?.apk,
+          out: args?.out,
+          keystore: args?.keystore,
+          alias: args?.alias,
+          timeoutMs: args?.timeoutMs,
+          owner: args?.owner ?? `sign:${process.pid}`,
+        })
+        return { text: json(result), isError: !result.ok }
+      } catch (error) {
+        return { isError: true, text: error?.message ?? String(error) }
       }
     },
   },

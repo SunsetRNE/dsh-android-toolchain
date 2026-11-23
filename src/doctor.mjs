@@ -11,6 +11,7 @@ import { aapt2Override, currentPath, resolveRoot, sdkRoot } from './paths.mjs'
 import { readSlotState } from './slot.mjs'
 import { components, enabledComponents, loadManifest } from './manifest.mjs'
 import { readHistory } from './history.mjs'
+import { findApksigner, loadSigningConfig } from './signing.mjs'
 
 /** ELF machine ids we care about. */
 const ELF_MACHINE = { 0xb7: 'aarch64', 0x3e: 'x86_64', 0x28: 'arm', 0x03: 'i386' }
@@ -82,6 +83,20 @@ export function doctor({ root: rootOption, manifest = loadManifest(), full = fal
   checks.aapt2 = aapt2
     ? { path: aapt2, version: runVersion(aapt2, ['version'], /aapt/i) }
     : { path: null, installed: false }
+  const apksigner = findApksigner(root)
+  checks.apksigner = { path: apksigner }
+  try {
+    const signing = loadSigningConfig(root)
+    checks.signing = {
+      configured: signing.missing.length === 0,
+      configFile: signing.configFile,
+      keystore: signing.keystore ?? null,
+      alias: signing.alias ?? null,
+      missing: signing.missing,
+    }
+  } catch (error) {
+    checks.signing = { configured: false, error: error.message }
+  }
   const sdk = sdkRoot(root)
   checks.sdk = sdk ? { path: sdk, platforms: listDirs(join(sdk, 'platforms')), buildTools: listDirs(join(sdk, 'build-tools')) } : { path: null, installed: false }
 
