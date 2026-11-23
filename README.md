@@ -112,6 +112,19 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 
 或环境变量：`ANDROID_KEYSTORE`、`ANDROID_KEY_ALIAS`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_PASSWORD`（后者缺省时复用前者）。
 
+首次配置（在设备上自己执行，密码只输入一次、不要发到对话里）：
+
+```sh
+keytool -genkeypair -keystore /root/keys/release.jks -alias release \
+  -keyalg RSA -keysize 2048 -validity 3650 -storetype PKCS12 -dname "CN=Your Name"
+chmod 600 /root/keys/release.jks
+printf '%s\n' '你的store密码' > /root/keys/release.pass && chmod 600 /root/keys/release.pass
+cat > /opt/android-toolchain/signing.json <<'JSON'
+{"keystore":"/root/keys/release.jks","alias":"release","storePasswordFile":"/root/keys/release.pass"}
+JSON
+chmod 600 /opt/android-toolchain/signing.json
+```
+
 ```sh
 android-sign app-debug.apk --out app-release.apk
 # 等价 MCP：mcp__android__android_sign { apk, out }
