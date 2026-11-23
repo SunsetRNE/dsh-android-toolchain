@@ -252,7 +252,7 @@ node bin/android-provision.mjs --manifest m.json --root /tmp/x --no-link   # 用
 - `ci.yml`：Node 20/22 矩阵，跑 `node --test`，并对每个 enabled 组件做来源可达性检查。
 - `smoke-arm64.yml`：在 **`ubuntu-24.04-arm`** 上跑两个 job——
   - `jvm`（阻塞）：供应工具链 → `setup-apk.sh --no-aapt2` → 编译/运行 `examples/junit-project` → 断言 java 是 aarch64、platform 与 apksigner 就位；
-  - `apk-qemu`（建议性，`continue-on-error`）：装 `qemu-user-static` + `libc6:amd64`/`libstdc++6:amd64`，让 Google Maven 的 **x86_64 aapt2** 在 arm64 runner 上通过 binfmt 跑起来，尝试**整包构建** `examples/hello-apk` 并上传 APK。
+  - `apk-qemu`（建议性，`continue-on-error`）：装 `qemu-user-static` + amd64 交叉 sysroot（`libc6-amd64-cross` 等，runner 的源没有 amd64 索引，不能走 multiarch），让 Google Maven 的 **x86_64 aapt2** 在 arm64 runner 上通过 binfmt 跑起来，尝试**整包构建** `examples/hello-apk` 并上传 APK。
   - 为什么要分：我们随包提供的 arm64 aapt2 是 Termux 的 **bionic** 构建，需要 `/system/bin/linker64`，GitHub 的 Ubuntu runner 没有 Android 用户态；真机上的 APK 路径由 `sh scripts/smoke.sh` 兜底。
 - 本地等价命令：
   ```sh
