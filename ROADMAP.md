@@ -42,9 +42,9 @@
 
 **为什么**：APK 路径（aapt2 包装、SDK 布局、脚本）目前没有自动化守卫，改坏只能靠人肉发现。
 
-- [ ] 公共仓库的 `ubuntu-24.04-arm` runner 上跑 `setup-apk.sh` + 示例项目 `assembleDebug`
-- [ ] 缓存 SDK / aapt2 / Gradle 依赖，控制 CI 时长
-- [ ] manifest 变更守卫：源可达 + sha256 变化必须显式更新
+- [x] 公共仓库的 `ubuntu-24.04-arm` runner 上跑 `setup-apk.sh` + 示例项目 `assembleDebug`（0.4.0）
+- [x] 缓存 SDK / aapt2 / Gradle 依赖，控制 CI 时长（0.4.0，`actions/cache@v5`）
+- [x] manifest 变更守卫：源可达 + sha256 变化必须显式更新（已在 0.1.3 起生效）
 - [ ] 版本兼容矩阵：DSH 0.2.x 各 rc 的 MCP/插件契约
 
 **验收**：PR 改动 `scripts/`、`toolchain.manifest.json`、`bin/` 时 CI 能真实构建成功；失败信息指向具体步骤。

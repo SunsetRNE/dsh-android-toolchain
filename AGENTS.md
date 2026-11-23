@@ -25,6 +25,7 @@ node bin/android-provision.mjs --pin --write # 回填 sha256（发布前必须�
 node bin/android-provision.mjs --verify-manifest --strict   # 发布门禁
 node bin/android-status.mjs                  # 槽位/已装组件
 node bin/android-doctor.mjs [--full]         # 架构/版本/余量诊断
+sh scripts/smoke.sh                          # 端到端冒烟：供应+APK+JUnit+架构断言
 ```
 
 本机验证 MCP 接线（不装插件也能测）：
@@ -39,6 +40,12 @@ DSH_ANDROID_ROOT=/tmp/toolchain node bin/android-broker.mjs   # 然后按 JSON-R
 2. **加/升组件**：改 `toolchain.manifest.json` → `--pin --write` → 跑 `--verify-manifest --strict` → README 的 aarch64 边界表如涉及能力变化要一起改。
 3. **加 MCP 工具**：在 `bin/android-broker.mjs` 的 `tools` 里加 schema + handler，补 `tests/mcp.test.mjs` 的 `tools/list` 断言，更新 README 工具表。
 4. **改 `cordis.patch.yml`**：确认 `toolCallTimeoutMs`（构建可能 20 分钟）、`failOnStartupError: false`（broker 缺失时不要拖垮启动）仍成立。
+
+## 冒烟与 CI
+
+- `scripts/smoke.sh` 是唯一端到端入口；CI 的 `smoke-arm64.yml` 只是 `sudo env "PATH=$PATH" sh scripts/smoke.sh`。
+- `examples/` 里的项目必须保持**零第三方依赖**（只有 AGP / JUnit），否则冷缓存 CI 会变慢。
+- 本地改 `bin/`、`src/`、`scripts/`、`toolchain.manifest.json` 或 `examples/` 后，先跑一次 `sh scripts/smoke.sh` 再提交。
 
 ## APK 路径（arm64）
 

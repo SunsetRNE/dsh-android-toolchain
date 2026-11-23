@@ -1,0 +1,54 @@
+name: smoke-arm64
+
+# The real regression guard: on an arm64 runner this provisions the pinned
+# toolchain, installs the arm64 APK tooling, builds the example APK and runs the
+# example tests. Unit tests alone cannot catch a broken aapt2 wrapper, SDK layout
+# or example project.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'bin/**'
+      - 'src/**'
+      - 'scripts/**'
+      - 'examples/**'
+      - 'toolchain.manifest.json'
+      - 'package.json'
+      - '.github/workflows/smoke-arm64.yml'
+  pull_request:
+    paths:
+      - 'bin/**'
+      - 'src/**'
+      - 'scripts/**'
+      - 'examples/**'
+      - 'toolchain.manifest.json'
+      - 'package.json'
+      - '.github/workflows/smoke-arm64.yml'
+
+jobs:
+  smoke:
+    # GitHub-hosted arm64 runner (public repositories).
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Cache the provisioned toolchain
+        uses: actions/cache@v5
+        with:
+          path: |
+            /opt/android-toolchain/sdk
+            /opt/android-toolchain/aapt2
+            /opt/android-toolchain/tmp
+            /opt/android-toolchain/gradle-home
+          key: android-toolchain-arm64-${{ hashFiles('toolchain.manifest.json', 'examples/**/*.gradle') }}
+
+      - name: Smoke (provision + APK + JUnit)
+        # Provisioning writes /opt and /usr/local/bin, so it needs root; PATH must
+        # survive sudo so `node` and the workspace are the same as the checkout.
+        run: sudo env "PATH=$PATH" "DSH_ANDROID_ROOT=/opt/android-toolchain" sh scripts/smoke.sh

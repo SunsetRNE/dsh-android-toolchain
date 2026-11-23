@@ -250,6 +250,8 @@ node bin/android-provision.mjs --manifest m.json --root /tmp/x --no-link   # 用
 ## CI / CD
 
 - `ci.yml`：Node 20/22 矩阵，跑 `node --test`，并对每个 enabled 组件做来源可达性检查。
+- `smoke-arm64.yml`：在 **`ubuntu-24.04-arm`** 上做真构建——供应工具链 → `setup-apk.sh` → 编译 `examples/hello-apk` → 跑 `examples/junit-project` → 断言 java 是 aarch64、aapt2 与 apksigner 就位；缓存 SDK/aapt2/Gradle，改动 `bin/`、`src/`、`scripts/`、`examples/`、manifest 时触发。
+- 本地等价命令：`sh scripts/smoke.sh`（这台机器上约 20 秒，冷缓存首次约几分钟）。
 - `release.yml`：打 `v*` tag → 测试 → `--verify-manifest --strict`（必须 pinned 且可达）→ `npm publish --provenance` → 生成 tarball 附到 GitHub Release。
 - 需要在仓库 secrets 里配 `NPM_TOKEN`；公开仓库才有 provenance。
 
