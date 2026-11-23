@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Android/JVM toolchain",
+    "description": "Shares one arm64 JDK + Gradle toolchain and runs every build through a single queued slot, so parallel agent sessions cannot exhaust the device."
+  }
+}
