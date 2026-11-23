@@ -7,6 +7,7 @@
  */
 import { existsSync } from 'node:fs'
 import { bridgeGet } from './bridge.mjs'
+import { appendHistory } from './history.mjs'
 
 const GUIDANCE = {
   NO_PERMISSION: 'DSHA is not allowed to install unknown apps. Allow it in the system settings that just opened, then ask again once.',
@@ -19,13 +20,17 @@ const GUIDANCE = {
 export function classifyInstallResult(raw) {
   const text = String(raw ?? '').trim()
   if (text.startsWith('OK:')) {
-    const mode = text.slice(3).trim()
+    const raw = text.slice(3).trim()
+    // The bridge appends a human explanation after the mode word.
+    const kind = raw.split(/\s+/)[0] || 'installer'
+    const detail = raw.slice(kind.length).trim() || null
     return {
       requested: true,
-      mode,
+      mode: kind,
+      detail,
       installed: false,
       note:
-        mode === 'installer'
+        kind === 'installer'
           ? 'The system installer is open on the device; confirm it there, then re-check the package.'
           : 'The install request is queued as a notification; tap it on the device, then re-check the package.',
     }
@@ -45,21 +50,37 @@ export function classifyInstallResult(raw) {
  * given, report the currently installed state (which may still be the old
  * version until the user confirms).
  */
-export async function installApk({ apk, packageName, options = {} }) {
+export async function installApk({ apk, packageName, root, options = {}, request = bridgeGet }) {
   if (!apk) throw new Error('apk is required')
   if (!existsSync(apk)) throw new Error(`APK not found: ${apk} (must be visible inside the container)`)
-  const result = await bridgeGet('/app/install', { path: apk }, options)
+  const startedAt = new Date().toISOString()
+  const result = await request('/app/install', { path: apk }, options)
   const raw = typeof result.body === 'object' && result.body?.result !== undefined ? result.body.result : result.body
   const outcome = classifyInstallResult(raw)
 
   let installedNow = null
   if (packageName) {
     try {
-      const apps = await bridgeGet('/app/apps', { q: packageName }, options)
+      const apps = await request('/app/apps', { q: packageName }, options)
       installedNow = typeof apps.body === 'object' && apps.body?.result !== undefined ? apps.body.result : apps.body
     } catch (error) {
       installedNow = `could not query installed apps: ${error.message}`
     }
   }
-  return { apk, packageName: packageName ?? null, ...outcome, installedNow, raw }
+  const id = `${Date.now().toString(36)}-${process.pid}`
+  if (root) {
+    appendHistory(root, {
+      id,
+      kind: 'install',
+      apk,
+      packageName: packageName ?? null,
+      requested: outcome.requested,
+      mode: outcome.mode,
+      code: outcome.code ?? null,
+      status: outcome.requested ? 'requested' : 'blocked',
+      startedAt,
+      finishedAt: new Date().toISOString(),
+    })
+  }
+  return { id, apk, packageName: packageName ?? null, ...outcome, installedNow, raw }
 }

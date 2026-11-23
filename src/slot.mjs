@@ -112,6 +112,7 @@ export async function runInSlot({
   const done = (outcome, status) => {
     appendHistory(root, {
       id,
+      kind: 'build',
       owner,
       cmd: label,
       cwd: cwd ?? process.cwd(),

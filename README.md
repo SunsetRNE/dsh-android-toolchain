@@ -167,7 +167,7 @@ android-install app-signed.apk --package com.example.hello
 
 ### 构建历史
 
-每次构建（含排队被拒）都会追加到 `<root>/run/history.jsonl`（最多 200 条，超过 512 KiB 自动裁剪）：
+每次构建（含排队被拒）、每次安装请求都会追加到 `<root>/run/history.jsonl`（最多 200 条，超过 512 KiB 自动裁剪）。`kind` 区分 `build` 与 `install`：
 
 ```json
 {"id":"m3k2p1-4321","owner":"mcp:4321","cmd":"gradle assembleDebug","cwd":"/tmp/app",
@@ -176,7 +176,8 @@ android-install app-signed.apk --package com.example.hello
 ```
 
 - `android_build` 返回 `buildId`；CLI 的收尾行是 `[android-build] <id> exit <code> in <n>s`，可直接和日志对齐
-- `status` 取值：`ok` / `failed` / `timeout` / `busy`（等锁超时）/ `queue-full`（排队已满）/ `error`（无结果）
+- `status` 取值：构建 `ok` / `failed` / `timeout` / `busy`（等锁超时）/ `queue-full`（排队已满）/ `error`（无结果）；安装 `requested` / `blocked`
+- 安装记录只存路径、包名、模式与结果码，不存文件内容
 - `android_status.recent` 给最近 5 条，`android-doctor` 给最近 3 条 + Gradle daemon 数量
 
 ## 已验证（本机 aarch64 proot）

@@ -238,7 +238,7 @@ const tools = [
     },
     handler: async (args) => {
       try {
-        const result = await installApk({ apk: args?.apk, packageName: args?.packageName })
+        const result = await installApk({ apk: args?.apk, packageName: args?.packageName, root })
         return { text: json(result), isError: !result.requested }
       } catch (error) {
         return { isError: true, text: error?.message ?? String(error) }

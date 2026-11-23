@@ -6,6 +6,7 @@
  * confirms on the device; this command only reports that the request was made
  * and (optionally) what version of the package is installed right now.
  */
+import { resolveRoot } from '../src/paths.mjs'
 import { installApk } from '../src/install.mjs'
 
 const argv = process.argv.slice(2)
@@ -25,7 +26,7 @@ if (!apk) {
 }
 
 try {
-  const result = await installApk({ apk, packageName })
+  const result = await installApk({ apk, packageName, root: resolveRoot({}) })
   if (result.requested) {
     console.error(`[android-install] requested via ${result.mode}: ${apk}`)
   } else {
