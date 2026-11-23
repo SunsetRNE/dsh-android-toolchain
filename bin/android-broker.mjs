@@ -14,6 +14,7 @@ import { aapt2Override, binPath, currentPath, resolveRoot, sdkRoot } from '../sr
 import { LIMITS, readSlotState, runInSlot } from '../src/slot.mjs'
 import { doctor } from '../src/doctor.mjs'
 import { loadManifest } from '../src/manifest.mjs'
+import { readHistory } from '../src/history.mjs'
 
 const PKG = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 const root = resolveRoot({ create: true })
@@ -55,6 +56,7 @@ const tools = [
           slot: state,
           installed,
           enabled: Object.entries(manifest.components).filter(([, spec]) => spec.enabled).map(([name]) => name),
+          recent: readHistory(root, 5),
         }),
       }
     },
@@ -136,6 +138,7 @@ const tools = [
       return {
         isError: !result.ok,
         text: json({
+          buildId: result.id,
           exitCode: result.exitCode,
           busy: Boolean(result.busy),
           timedOut: Boolean(result.timedOut),

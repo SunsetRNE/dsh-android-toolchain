@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { aapt2Override, currentPath, resolveRoot, sdkRoot } from './paths.mjs'
 import { readSlotState } from './slot.mjs'
 import { components, enabledComponents, loadManifest } from './manifest.mjs'
+import { readHistory } from './history.mjs'
 
 /** ELF machine ids we care about. */
 const ELF_MACHINE = { 0xb7: 'aarch64', 0x3e: 'x86_64', 0x28: 'arm', 0x03: 'i386' }
@@ -99,9 +100,17 @@ export function doctor({ root: rootOption, manifest = loadManifest(), full = fal
   }
   if (!state.holder && state.queue.length > 0) warnings.push('waiters are queued without a holder; check android_status')
 
+  let gradleDaemons = null
+  try {
+    const pgrep = spawnSync('pgrep', ['-fc', 'GradleDaemon'], { encoding: 'utf8' })
+    gradleDaemons = Number((pgrep.stdout ?? '').trim() || '0')
+  } catch {}
+
   return {
     root,
     limits: state.limits,
+    gradleDaemons,
+    recentBuilds: readHistory(root, 3),
     slot: state,
     components: installed,
     checks,

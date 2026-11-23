@@ -62,5 +62,5 @@ const result = await runInSlot({
 if (result.stdout) process.stdout.write(result.stdout)
 if (result.stderr) process.stderr.write(result.stderr)
 if (result.busy || result.reason) console.error(`[android-build] ${result.reason ?? 'busy'}`)
-console.error(`[android-build] exit ${result.exitCode} in ${Math.round((result.durationMs ?? 0) / 1000)}s`)
+console.error(`[android-build] ${result.id ?? '-'} exit ${result.exitCode} in ${Math.round((result.durationMs ?? 0) / 1000)}s`)
 process.exit(result.exitCode ?? 1)

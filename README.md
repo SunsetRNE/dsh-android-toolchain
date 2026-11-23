@@ -74,7 +74,7 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 
 | 工具 | 作用 |
 |---|---|
-| `mcp__android__android_status` | 共享区、已装组件、当前 holder 与排队者、上限 |
+| `mcp__android__android_status` | 共享区、已装组件、当前 holder 与排队者、上限、最近 5 次构建 |
 | `mcp__android__android_doctor` | java/gradle 的**真实 ELF 架构**、版本、磁盘/内存余量、供应告警 |
 | `mcp__android__android_provision` | 按 manifest 安装/修复（幂等、校验 sha256、走单槽） |
 | `mcp__android__android_build` | 跑一个/多个 Gradle task，返回退出码与输出尾部 |
@@ -94,6 +94,20 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 | 不用 `RLIMIT_AS` | — | JVM 需要大段虚拟地址空间，`prlimit --as` 会让它起不来；内存靠 `-Xmx` + 单槽 |
 
 `android_status` 的 `holder.json` 里记录了 owner（会话/调用方标签）、pid、开始时间，谁占着槽一目了然。
+
+### 构建历史
+
+每次构建（含排队被拒）都会追加到 `<root>/run/history.jsonl`（最多 200 条，超过 512 KiB 自动裁剪）：
+
+```json
+{"id":"m3k2p1-4321","owner":"mcp:4321","cmd":"gradle assembleDebug","cwd":"/tmp/app",
+ "startedAt":"2026-11-23T18:20:00Z","finishedAt":"...","waitedMs":107,"durationMs":4355,
+ "exitCode":0,"status":"ok"}
+```
+
+- `android_build` 返回 `buildId`；CLI 的收尾行是 `[android-build] <id> exit <code> in <n>s`，可直接和日志对齐
+- `status` 取值：`ok` / `failed` / `timeout` / `busy`（等锁超时）/ `queue-full`（排队已满）/ `error`（无结果）
+- `android_status.recent` 给最近 5 条，`android-doctor` 给最近 3 条 + Gradle daemon 数量
 
 ## 已验证（本机 aarch64 proot）
 

@@ -1,6 +1,6 @@
 {
   "name": "dsh-android-toolchain",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "description": "Shared Android/JVM toolchain provisioning plus a single-slot build broker (MCP server) for DeepSeek Harness on aarch64.",
   "license": "MIT",
   "type": "module",
@@ -17,14 +17,15 @@
   "files": [
     "AGENTS.md",
     "README.md",
+    "ROADMAP.md",
     "bin",
     "cordis.patch.yml",
+    "icon.svg",
     "index.js",
+    "locale/*.json",
     "scripts",
     "src",
-    "toolchain.manifest.json",
-    "icon.svg",
-    "locale/*.json"
+    "toolchain.manifest.json"
   ],
   "scripts": {
     "test": "node --test tests/*.test.mjs",

@@ -16,6 +16,7 @@ import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'nod
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runPaths } from './paths.mjs'
+import { appendHistory } from './history.mjs'
 
 export const EXIT_BUSY = 75
 
@@ -104,17 +105,39 @@ export async function runInSlot({
   mkdirSync(paths.queue, { recursive: true })
   pruneQueue(paths.queue)
 
+  const id = `${Date.now().toString(36)}-${process.pid}`
+  const startedIso = new Date().toISOString()
+  const startedMs = Date.now()
+  const label = [cmd, ...args].join(' ').slice(0, 200)
+  const done = (outcome, status) => {
+    appendHistory(root, {
+      id,
+      owner,
+      cmd: label,
+      cwd: cwd ?? process.cwd(),
+      startedAt: startedIso,
+      finishedAt: new Date().toISOString(),
+      waitedMs: outcome.waitedMs,
+      durationMs: outcome.durationMs,
+      exitCode: outcome.exitCode,
+      status,
+      ...(outcome.timedOut ? { timedOut: true } : {}),
+      ...(outcome.reason ? { reason: outcome.reason } : {}),
+    })
+    return { ...outcome, id }
+  }
+
   const queueLimit = maxQueue ?? LIMITS.maxQueue
   const waiting = readdirSync(paths.queue).length
   if (waiting >= queueLimit) {
-    return {
+    return done({
       ok: false,
       busy: true,
       exitCode: EXIT_BUSY,
       reason: `slot queue full (${waiting}/${queueLimit}); retry when android_status() is idle`,
       stdout: '',
       stderr: '',
-    }
+    }, 'queue-full')
   }
 
   const entry = join(paths.queue, `${process.pid}-${Date.now()}.json`)
@@ -137,7 +160,6 @@ export async function runInSlot({
     ...args,
   ]
 
-  const startedAt = Date.now()
   let flockStderr = ''
   const code = await new Promise((resolve) => {
     const child = spawn('flock', ['-w', String(waitSeconds), '-E', String(EXIT_BUSY), paths.lock, ...holderArgs], {
@@ -162,33 +184,33 @@ export async function runInSlot({
 
   if (!result) {
     if (code === EXIT_BUSY) {
-      return {
+      return done({
         ok: false,
         busy: true,
         exitCode: code,
         reason: `slot busy: no turn within ${waitSeconds}s`,
-        waitedMs: Date.now() - startedAt,
+        waitedMs: Date.now() - startedMs,
         stdout: '',
         stderr: flockStderr.trim(),
-      }
+      }, 'busy')
     }
-    return {
+    return done({
       ok: false,
       exitCode: code,
       reason: 'slot holder produced no result',
-      waitedMs: Date.now() - startedAt,
+      waitedMs: Date.now() - startedMs,
       stdout: '',
       stderr: flockStderr.trim(),
-    }
+    }, 'error')
   }
 
-  return {
+  return done({
     ok: result.exitCode === 0,
     exitCode: result.exitCode,
     timedOut: Boolean(result.timedOut),
-    waitedMs: result.startedAt ? Date.parse(result.startedAt) - startedAt : undefined,
+    waitedMs: result.startedAt ? Date.parse(result.startedAt) - startedMs : undefined,
     durationMs: result.durationMs,
     stdout: result.stdout ?? '',
     stderr: result.stderr ?? '',
-  }
+  }, result.exitCode === 0 ? 'ok' : result.timedOut ? 'timeout' : 'failed')
 }
