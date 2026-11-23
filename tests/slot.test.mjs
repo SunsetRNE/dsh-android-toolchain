@@ -52,11 +52,11 @@ test('a crashing command reports its exit code', async () => {
 })
 
 test('a waiting caller does not erase the running build metadata', async () => {
-  const running = runInSlot({ ...options, cmd: 'sh', args: ['-c', 'sleep 1.2'], owner: 'holder', waitMs: 10_000 })
+  const running = runInSlot({ ...options, cmd: 'sh', args: ['-c', 'sleep 3'], owner: 'holder', waitMs: 10_000 })
   await new Promise((resolve) => setTimeout(resolve, 300))
   assert.equal(readSlotState(root).holder.owner, 'holder')
 
-  const blocked = await runInSlot({ ...options, cmd: 'sh', args: ['-c', 'true'], owner: 'waiter', waitMs: 250 })
+  const blocked = await runInSlot({ ...options, cmd: 'sh', args: ['-c', 'true'], owner: 'waiter', waitMs: 400 })
   assert.equal(blocked.busy, true)
   assert.equal(readSlotState(root).holder.owner, 'holder', 'busy attempt kept the holder metadata')
   assert.deepEqual(readSlotState(root).queue, [], 'the running build is not a waiter')
