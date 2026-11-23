@@ -77,6 +77,31 @@ async function download(url, destination) {
   return { sha256: hash.digest('hex'), bytes: counters.bytes }
 }
 
+// python3 -m zipfile drops the executable bit, which breaks gradle/bin/* and
+// every JDK tool in a zip. This variant restores the mode from external_attr.
+const ZIP_PY = String.raw`
+import os, sys, zipfile
+archive, dest = sys.argv[1], sys.argv[2]
+root = os.path.realpath(dest)
+with zipfile.ZipFile(archive) as z:
+    for info in z.infolist():
+        target = os.path.realpath(os.path.join(dest, info.filename))
+        if os.path.commonpath([root, target]) != root:
+            raise SystemExit("unsafe path in zip: " + info.filename)
+        if info.is_dir():
+            os.makedirs(target, exist_ok=True)
+            continue
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with z.open(info) as src, open(target, "wb") as out:
+            while True:
+                chunk = src.read(65536)
+                if not chunk:
+                    break
+                out.write(chunk)
+        mode = info.external_attr >> 16
+        os.chmod(target, 0o755 if mode & 0o111 else 0o644)
+`
+
 function extract(file, directory, archive) {
   mkdirSync(directory, { recursive: true })
   if (archive === 'tar.gz') {
@@ -86,8 +111,13 @@ function extract(file, directory, archive) {
   }
   const unzip = spawnSync('unzip', ['-q', '-o', file, '-d', directory], { encoding: 'utf8' })
   if (unzip.status === 0) return
-  const python = spawnSync('python3', ['-m', 'zipfile', '-e', file, directory], { encoding: 'utf8' })
+  const python = spawnSync('python3', ['-c', ZIP_PY, file, directory], { encoding: 'utf8' })
   if (python.status !== 0) throw new Error(`cannot unzip: install unzip or python3 (${unzip.stderr || python.stderr})`)
+}
+
+function archivePath(root, component) {
+  const extension = component.archive === 'zip' ? 'zip' : 'tar.gz'
+  return join(root, 'tmp', `${component.name}-${component.version}.${extension}`)
 }
 
 function flatten(directory) {
@@ -199,10 +229,27 @@ export async function installComponent(root, component, { allowUnpinned = false,
 
   const tmp = join(root, 'tmp')
   mkdirSync(tmp, { recursive: true })
-  const archiveFile = join(tmp, `${component.name}-${component.version}.${component.archive === 'zip' ? 'zip' : 'tar.gz'}`)
+  const archiveFile = archivePath(root, component)
   const extractDir = join(tmp, `extract-${component.name}-${component.version}`)
   rmSync(extractDir, { recursive: true, force: true })
-  const { sha256: actual, bytes } = await download(component.source, archiveFile)
+  let reused = false
+  let actual = ''
+  let bytes = 0
+  if (existsSync(archiveFile)) {
+    const cached = await sha256(archiveFile)
+    if (component.sha256 && cached === component.sha256) {
+      actual = cached
+      bytes = statSync(archiveFile).size
+      reused = true
+    } else {
+      rmSync(archiveFile, { force: true })
+    }
+  }
+  if (!reused) {
+    const downloaded = await download(component.source, archiveFile)
+    actual = downloaded.sha256
+    bytes = downloaded.bytes
+  }
   if (component.sha256 && actual !== component.sha256) {
     rmSync(archiveFile, { force: true })
     throw new Error(`${component.name}: sha256 mismatch\n  expected ${component.sha256}\n  actual   ${actual}`)
@@ -246,13 +293,15 @@ async function verifyManifest({ strict }) {
 async function pin({ write }) {
   const manifest = load()
   const hashes = {}
+  const root = resolveRoot({ create: true })
   for (const component of enabledComponents(manifest)) {
     if (!component.source) continue
-    const tmp = join(resolveRoot({ create: true }), 'tmp')
-    mkdirSync(tmp, { recursive: true })
-    const file = join(tmp, `pin-${component.name}`)
+    mkdirSync(join(root, 'tmp'), { recursive: true })
+    const file = archivePath(root, component)
     const { sha256: digest, bytes } = await download(component.source, file)
-    rmSync(file, { force: true })
+    // Keep the archive when writing the manifest: the next install reuses it
+    // instead of downloading the same 350 MB twice.
+    if (!write) rmSync(file, { force: true })
     hashes[component.name] = digest
     console.log(`${component.name} ${component.version} ${digest} (${Math.round(bytes / 1e6)} MB)`)
   }

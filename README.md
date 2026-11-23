@@ -94,6 +94,12 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 
 `android_status` 的 `holder.json` 里记录了 owner（会话/调用方标签）、pid、开始时间，谁占着槽一目了然。
 
+## 已验证（本机 aarch64 proot）
+
+- Temurin **21.0.5+11 (aarch64)** + Gradle **8.10.2**：`android-build build` 跑通一个真实 Java 项目（`BUILD SUCCESSFUL`，15 s）
+- 同一个构建经 `mcp__android__android_build` 调用成功（MCP 客户端 → broker → 单槽 → Gradle，2.7 s 增量）
+- `android-doctor` 报告 `java arch = aarch64`、槽位空闲
+
 ## aarch64 的现实边界
 
 本机是 **aarch64 + proot**，无 x86 模拟：

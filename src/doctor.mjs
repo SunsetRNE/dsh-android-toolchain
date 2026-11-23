@@ -4,7 +4,7 @@
  * The provisioner and the broker both use it, so `android-doctor` and the
  * `android_doctor` MCP tool can never disagree.
  */
-import { execFileSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { readFileSync, readdirSync, realpathSync, statfsSync } from 'node:fs'
 import { join } from 'node:path'
 import { currentPath, resolveRoot } from './paths.mjs'
@@ -33,14 +33,10 @@ function firstLine(text) {
 }
 
 function runVersion(cmd, args) {
-  try {
-    const output = execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 15_000 })
-    return firstLine(output)
-  } catch (error) {
-    const stderr = error?.stderr ? String(error.stderr) : ''
-    const stdout = error?.stdout ? String(error.stdout) : ''
-    return firstLine(stderr || stdout) || `error: ${error?.message ?? 'failed'}`
-  }
+  // `java -version` prints on stderr, `gradle --version` on stdout.
+  const result = spawnSync(cmd, args, { encoding: 'utf8', timeout: 15_000 })
+  if (result.error) return `error: ${result.error.message}`
+  return firstLine(`${result.stderr ?? ''}${result.stdout ?? ''}`) || `exit ${result.status}`
 }
 
 function memory() {
