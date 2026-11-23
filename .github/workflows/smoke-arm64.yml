@@ -1,14 +1,20 @@
 name: smoke-arm64
 
-# Regression guard on an arm64 runner.
+# Regression guard on GitHub's arm64 runner.
 #
-# job `jvm` (blocking): provisioning, JUnit build/test, and the doctor contract
-# on aarch64. This is the part that can run on plain Linux.
+# Scope note: the arm64 aapt2 we ship is Termux's bionic build and needs
+# /system/bin/linker64, so a plain Ubuntu arm64 runner cannot run it. Attempts
+# to run Google's x86_64 aapt2 through qemu failed on the runner's binfmt setup
+# (it cannot resolve /lib64/ld-linux-x86-64.so.2 for the daemon), so CI guards
+# what it can honestly guard:
 #
-# job `apk-qemu` (advisory): tries the full APK build by letting the Maven
-# x86_64 aapt2 run under qemu-user. The arm64 aapt2 we ship is Termux's bionic
-# build and needs /system/bin/linker64, which a GitHub runner does not have, so
-# this job is allowed to fail without failing the workflow.
+#   - provisioning of the pinned JDK/Gradle on aarch64
+#   - cmdline-tools + platform + build-tools installation (setup-apk --no-aapt2)
+#   - a real Java test build and the JUnit summary path
+#   - the doctor contract (java arch, apksigner, platform)
+#
+# The APK path itself is guarded by `sh scripts/smoke.sh` on a real device and is
+# part of the release checklist.
 on:
   workflow_dispatch:
   push:
@@ -40,58 +46,5 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - name: Cache the provisioned toolchain
-        uses: actions/cache@v5
-        with:
-          path: |
-            /opt/android-toolchain/sdk
-            /opt/android-toolchain/tmp
-            /opt/android-toolchain/gradle-home
-          key: android-toolchain-jvm-arm64-${{ hashFiles('toolchain.manifest.json', 'examples/**/*.gradle') }}
-      - name: Smoke (provision + JUnit + doctor)
+      - name: Smoke (provision + SDK + JUnit + doctor)
         run: sudo env "PATH=$PATH" "DSH_ANDROID_ROOT=/opt/android-toolchain" sh scripts/smoke.sh --jvm
-
-  apk-qemu:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 60
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-      - name: Cache the provisioned toolchain
-        uses: actions/cache@v5
-        with:
-          path: |
-            /opt/android-toolchain/sdk
-            /opt/android-toolchain/tmp
-            /opt/android-toolchain/gradle-home
-          key: android-toolchain-apk-arm64-${{ hashFiles('toolchain.manifest.json', 'examples/**/*.gradle') }}
-      - name: Install qemu-user plus an amd64 sysroot for the x86_64 aapt2
-        # The arm64 runner's apt sources are ubuntu-ports, which has no amd64
-        # indexes, so multiarch is not an option. The cross packages install an
-        # amd64 sysroot under /usr/x86_64-linux-gnu; binfmt looks for the loader
-        # at the path baked into the ELF, so link it into place.
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-user-static libc6-amd64-cross libstdc++6-amd64-cross libgcc-s1-amd64-cross
-          # binfmt resolves the interpreter path baked into the ELF, and arm64
-          # Ubuntu has no /lib64 at all, so create both the loader and the link.
-          sudo mkdir -p /usr/lib64
-          sudo cp -a /usr/x86_64-linux-gnu/lib64/ld-linux-x86-64.so.2 /usr/lib64/ld-linux-x86-64.so.2
-          if [ ! -e /lib64 ] && [ ! -L /lib64 ]; then sudo ln -s usr/lib64 /lib64; fi
-          sudo ln -sfn /usr/x86_64-linux-gnu/lib /usr/lib/x86_64-linux-gnu
-          ls -l /lib64/ld-linux-x86-64.so.2
-          ls -l /lib/x86_64-linux-gnu/libstdc++.so.6
-          ls -l /lib/x86_64-linux-gnu/libstdc++.so.6
-          ls /proc/sys/fs/binfmt_misc | grep -i qemu || true
-      - name: Smoke (provision + APK via qemu + JUnit)
-        run: sudo env "PATH=$PATH" "DSH_ANDROID_ROOT=/opt/android-toolchain" sh scripts/smoke.sh --apk-ci
-      - name: Keep the built APK
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: hello-apk
-          path: examples/hello-apk/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: ignore

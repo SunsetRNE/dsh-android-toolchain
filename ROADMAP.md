@@ -42,8 +42,8 @@
 
 **为什么**：APK 路径（aapt2 包装、SDK 布局、脚本）目前没有自动化守卫，改坏只能靠人肉发现。
 
-- [x] 公共仓库的 `ubuntu-24.04-arm` runner：`--jvm` 阻塞基线 + `--apk-ci` 的建议性 qemu 构建（0.4.1）
-- [x] 缓存 SDK / aapt2 / Gradle 依赖，控制 CI 时长（0.4.0，`actions/cache@v5`）
+- [x] 公共仓库的 `ubuntu-24.04-arm` runner：`--jvm` 阻塞基线（供应/SDK/JUnit/doctor）；APK 构建改由真机 smoke 门禁（0.4.5，qemu 路线已放弃）
+- [ ] 缓存 SDK / Gradle 依赖，控制 CI 时长（root 属主的 `/opt` 与 actions/cache 的 runner 用户不兼容，暂缓）
 - [x] manifest 变更守卫：源可达 + sha256 变化必须显式更新（已在 0.1.3 起生效）
 - [ ] 版本兼容矩阵：DSH 0.2.x 各 rc 的 MCP/插件契约
 

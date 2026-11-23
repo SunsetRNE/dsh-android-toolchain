@@ -47,7 +47,7 @@ DSH_ANDROID_ROOT=/tmp/toolchain node bin/android-broker.mjs   # 然后按 JSON-R
 
 - `scripts/smoke.sh` 是唯一端到端入口：`device`（默认，含 APK）、`--jvm`（纯 Linux 基线）、`--apk-ci`（跳过 Android aapt2，依赖 qemu 跑 Maven aapt2）。
 - `smoke.sh` 会带 `--wait`（默认 10 分钟，`SMOKE_WAIT_MS` 可调）排队，不要因为本地槽位忙就以为脚本失败。
-- Termux aapt2 需要 `/system/bin/linker64`，**纯 Linux 主机上不可能跑**；CI 只能覆盖到 `--jvm` + 建议性的 qemu 构建，真机 APK 由 `smoke.sh` 全量模式兜底。
+- Termux aapt2 需要 `/system/bin/linker64`，**纯 Linux 主机上不可能跑**；CI 只覆盖 `--jvm`（供应/SDK/JUnit/doctor），**APK 由真机 `smoke.sh` 全量模式门禁**。不要再往 CI 里加 qemu/binfmt 的尝试（已试过并放弃）。
 - `examples/` 里的项目必须保持**零第三方依赖**（只有 AGP / JUnit），否则冷缓存 CI 会变慢。
 - 本地改 `bin/`、`src/`、`scripts/`、`toolchain.manifest.json` 或 `examples/` 后，先跑一次 `sh scripts/smoke.sh` 再提交。
 
