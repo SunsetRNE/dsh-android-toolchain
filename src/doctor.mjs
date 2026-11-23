@@ -1,0 +1,115 @@
+/**
+ * Read-only inspection of the shared area: what is installed, which architecture
+ * the binaries really are, how much room is left, who holds the build slot.
+ * The provisioner and the broker both use it, so `android-doctor` and the
+ * `android_doctor` MCP tool can never disagree.
+ */
+import { execFileSync } from 'node:child_process'
+import { readFileSync, readdirSync, realpathSync, statfsSync } from 'node:fs'
+import { join } from 'node:path'
+import { currentPath, resolveRoot } from './paths.mjs'
+import { readSlotState } from './slot.mjs'
+import { components, enabledComponents, loadManifest } from './manifest.mjs'
+
+/** ELF machine ids we care about. */
+const ELF_MACHINE = { 0xb7: 'aarch64', 0x3e: 'x86_64', 0x28: 'arm', 0x03: 'i386' }
+
+/** `file`-style architecture probe without depending on `file`. */
+export function elfMachine(file) {
+  try {
+    const target = realpathSync(file)
+    const buffer = readFileSync(target).subarray(0, 20)
+    if (buffer[0] !== 0x7f || buffer[1] !== 0x45) return 'script' // #!E
+    const little = buffer[5] === 1
+    const value = little ? buffer.readUInt16LE(18) : buffer.readUInt16BE(18)
+    return ELF_MACHINE[value] ?? `elf:0x${value.toString(16)}`
+  } catch {
+    return 'missing'
+  }
+}
+
+function firstLine(text) {
+  return String(text ?? '').trim().split('\n')[0]?.slice(0, 200) ?? ''
+}
+
+function runVersion(cmd, args) {
+  try {
+    const output = execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 15_000 })
+    return firstLine(output)
+  } catch (error) {
+    const stderr = error?.stderr ? String(error.stderr) : ''
+    const stdout = error?.stdout ? String(error.stdout) : ''
+    return firstLine(stderr || stdout) || `error: ${error?.message ?? 'failed'}`
+  }
+}
+
+function memory() {
+  try {
+    const info = readFileSync('/proc/meminfo', 'utf8')
+    const read = (key) => Number(new RegExp(`^${key}:\\s+(\\d+) kB`, 'm').exec(info)?.[1] ?? 0) * 1024
+    return { availableBytes: read('MemAvailable'), swapFreeBytes: read('SwapFree') }
+  } catch {
+    return {}
+  }
+}
+
+export function doctor({ root: rootOption, manifest = loadManifest(), full = false } = {}) {
+  const root = rootOption ?? resolveRoot({})
+  const state = readSlotState(root)
+  const installed = {}
+  for (const component of components(manifest)) {
+    const current = currentPath(root, component.name)
+    let versions = []
+    try {
+      versions = readdirSync(join(root, component.name)).filter((name) => name !== 'current')
+    } catch {}
+    installed[component.name] = {
+      enabled: Boolean(component.enabled),
+      pinned: Boolean(component.sha256),
+      current: elfTarget(current) ? realpathSync(current) : null,
+      versions,
+    }
+  }
+
+  const javaHome = join(root, 'jdk', 'current')
+  const checks = {
+    java: { path: join(javaHome, 'bin', 'java'), arch: elfMachine(join(javaHome, 'bin', 'java')), version: runVersion(join(javaHome, 'bin', 'java'), ['-version']) },
+    gradle: { path: join(root, 'bin', 'gradle'), arch: elfMachine(join(root, 'bin', 'gradle')), version: full ? runVersion(join(root, 'bin', 'gradle'), ['--version']) : undefined },
+    broker: { path: join(root, 'bin', 'android-broker'), arch: elfMachine(join(root, 'bin', 'android-broker')) },
+  }
+
+  let disk = {}
+  try {
+    const stats = statfsSync(root)
+    disk = { availableBytes: stats.bavail * stats.bsize, totalBytes: stats.blocks * stats.bsize }
+  } catch {}
+
+  const warnings = []
+  for (const component of enabledComponents(manifest)) {
+    if (!installed[component.name]?.current) warnings.push(`${component.name} is enabled but not installed; run android-provision`)
+  }
+  if (checks.java.arch !== 'missing' && checks.java.arch !== 'script' && checks.java.arch !== 'aarch64') {
+    warnings.push(`java is ${checks.java.arch}, not aarch64: it cannot run on this device`)
+  }
+  if (!state.holder && state.queue.length > 0) warnings.push('waiters are queued without a holder; check android_status')
+
+  return {
+    root,
+    limits: state.limits,
+    slot: state,
+    components: installed,
+    checks,
+    disk,
+    memory: memory(),
+    warnings,
+  }
+}
+
+function elfTarget(path) {
+  try {
+    realpathSync(path)
+    return true
+  } catch {
+    return false
+  }
+}

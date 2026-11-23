@@ -1,0 +1,52 @@
+name: release
+
+# npm publishing is intentionally not part of this pipeline: the maintainer
+# cannot register npm accounts (the captcha never renders in this environment).
+# Distribution is the GitHub Release tarball, installed with
+#   dsha-plugin import dsh-android-toolchain-<version>.tgz
+# or through the Plugins page (install_bundle with the unpacked directory).
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - run: node --test tests/*.test.mjs
+      # A release must be pinned: every enabled component carries a sha256 and
+      # every source is reachable right now.
+      - run: node bin/android-provision.mjs --verify-manifest --strict
+
+      - name: Build the installable tarball
+        run: |
+          npm pack --silent > tarball-name.txt
+          TARBALL="$(tail -n1 tarball-name.txt)"
+          sha256sum "$TARBALL" > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Publish the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            *.tgz
+            SHA256SUMS
+          generate_release_notes: true
+          body: |
+            Install into a DSH profile (either way):
+
+            - `dsha-plugin import dsh-android-toolchain-<version>.tgz`
+            - or unpack it and use **Plugins → install_bundle** on the directory
+
+            The bundle provisions the shared toolchain from
+            `toolchain.manifest.json` and exposes `mcp__android__*` tools after a
+            Web restart. Verify with `android-doctor`.

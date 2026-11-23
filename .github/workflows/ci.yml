@@ -1,0 +1,25 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # The package has no runtime dependencies; --ignore-scripts keeps
+      # postinstall (which provisions a JDK on a device) out of CI.
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - run: node --test tests/*.test.mjs
+      # Reachability of every enabled source; pinning is enforced at release.
+      - run: node bin/android-provision.mjs --verify-manifest

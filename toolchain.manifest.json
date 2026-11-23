@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "components": {
+    "jdk": {
+      "enabled": true,
+      "version": "21.0.5+11",
+      "source": "https://api.adoptium.net/v3/binary/version/jdk-21.0.5%2B11/linux/aarch64/jdk/hotspot/normal/eclipse",
+      "archive": "tar.gz",
+      "sha256": "",
+      "provides": ["java", "javac", "jar"],
+      "notes": "Eclipse Temurin 21 for linux/aarch64. Distro JDKs also work; keep one arm64 JDK here."
+    },
+    "gradle": {
+      "enabled": true,
+      "version": "8.10.2",
+      "source": "https://services.gradle.org/distributions/gradle-8.10.2-bin.zip",
+      "archive": "zip",
+      "sha256": "",
+      "provides": ["gradle"],
+      "notes": "Gradle runs on any host JVM; only the JVM must be arm64."
+    },
+    "kotlin": {
+      "enabled": false,
+      "version": "2.0.21",
+      "source": "https://github.com/JetBrains/kotlin/releases/download/v2.0.21/kotlin-compiler-2.0.21.zip",
+      "archive": "zip",
+      "sha256": "",
+      "provides": ["kotlinc"],
+      "notes": "Optional standalone compiler; Gradle's Kotlin plugin is usually enough."
+    },
+    "sdk": {
+      "enabled": false,
+      "version": "35.0.0",
+      "source": "",
+      "archive": "zip",
+      "sha256": "",
+      "provides": ["sdkmanager", "aapt2", "d8"],
+      "notes": "Official build-tools are linux-x86_64 ELF and cannot exec under aarch64 proot. Enable only with an arm64 build-tools archive you trust, and pin its sha256."
+    },
+    "ndk": {
+      "enabled": false,
+      "version": "",
+      "source": "",
+      "archive": "zip",
+      "sha256": "",
+      "provides": ["clang"],
+      "notes": "The NDK ships an x86_64 host toolchain only; unusable here. Cross-compilation needs a remote x86_64 builder."
+    }
+  },
+  "gradleUserHome": {
+    "org.gradle.jvmargs": "-Xmx1024m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8",
+    "org.gradle.workers.max": "2",
+    "org.gradle.parallel": "false",
+    "org.gradle.daemon": "true",
+    "org.gradle.daemon.idletimeout": "600000",
+    "org.gradle.caching": "true",
+    "kotlin.compiler.execution.strategy": "in-process",
+    "kotlin.daemon.jvmargs": "-Xmx768m"
+  }
+}

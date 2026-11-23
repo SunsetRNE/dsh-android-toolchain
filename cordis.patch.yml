@@ -1,0 +1,26 @@
+# Profile-level bundle patch: one Host plugin row (shell-env facts) and one
+# global MCP client row. The MCP server is optional to the harness: a missing
+# broker only hides the tools, it never blocks startup.
+- insert:
+    - id: android-toolchain
+      name: 'dsh-android-toolchain'
+
+    - id: android-toolchain-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: android
+        transport: stdio
+        # Resolved through PATH; `android-provision` installs this launcher into
+        # the shared area's bin directory and /usr/local/bin.
+        command: android-broker
+        args: []
+        # A build can legitimately run for many minutes.
+        toolCallTimeoutMs: 1800000
+        startupTimeoutMs: 20000
+        # Provisioning is lazy: the broker always starts, tools report state.
+        failOnStartupError: false
+        reconnect:
+          enabled: true
+          initialDelayMs: 500
+          maxDelayMs: 30000
+          maxAttempts: 10

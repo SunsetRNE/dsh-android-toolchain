@@ -1,0 +1,163 @@
+#!/usr/bin/env node
+/**
+ * MCP stdio broker. One server for the whole Host (the MCP manager mounts a
+ * single instance per enabled entry), but every build still goes through the
+ * file lock, so the CLI, subagents and a second broker instance cannot overlap.
+ *
+ * stdout is the JSON-RPC channel: never print anything else here.
+ */
+import { existsSync, readFileSync, readlinkSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { serveStdio } from '../src/mcp.mjs'
+import { binPath, currentPath, resolveRoot } from '../src/paths.mjs'
+import { LIMITS, readSlotState, runInSlot } from '../src/slot.mjs'
+import { doctor } from '../src/doctor.mjs'
+import { loadManifest } from '../src/manifest.mjs'
+
+const PKG = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+const root = resolveRoot({ create: true })
+const manifest = loadManifest()
+const PROVISIONER = fileURLToPath(new URL('./android-provision.mjs', import.meta.url))
+
+const tail = (text, limit = 8000) => (text.length > limit ? `…(truncated)\n${text.slice(-limit)}` : text)
+const json = (value) => JSON.stringify(value, null, 2)
+
+function buildEnv() {
+  const path = [binPath(root, '.'), process.env.PATH ?? ''].filter(Boolean).join(':')
+  const env = { ...process.env, PATH: path, JAVA_HOME: join(root, 'jdk', 'current'), GRADLE_USER_HOME: join(root, 'gradle-home') }
+  const sdk = currentPath(root, 'sdk')
+  if (existsSync(sdk)) {
+    env.ANDROID_HOME = sdk
+    env.ANDROID_SDK_ROOT = sdk
+  }
+  const ndk = currentPath(root, 'ndk')
+  if (existsSync(ndk)) env.ANDROID_NDK_HOME = ndk
+  return env
+}
+
+const tools = [
+  {
+    name: 'android_status',
+    description: 'Show the shared toolchain root, installed components, and the single build slot (holder + waiters). Cheap: call it before and after a build.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    handler: async () => {
+      const installed = {}
+      for (const name of ['jdk', 'gradle', 'kotlin', 'sdk', 'ndk']) {
+        const current = currentPath(root, name)
+        installed[name] = existsSync(current) ? safeReadlink(current) : null
+      }
+      const state = readSlotState(root)
+      return {
+        text: json({
+          root,
+          limits: LIMITS,
+          slot: state,
+          installed,
+          enabled: Object.entries(manifest.components).filter(([, spec]) => spec.enabled).map(([name]) => name),
+        }),
+      }
+    },
+  },
+  {
+    name: 'android_doctor',
+    description: 'Diagnose the shared area: real ELF architecture of java/gradle, versions, disk and memory headroom, provisioning warnings.',
+    inputSchema: {
+      type: 'object',
+      properties: { full: { type: 'boolean', description: 'Also run `gradle --version` (slow).' } },
+      additionalProperties: false,
+    },
+    handler: async (args) => ({ text: json(doctor({ root, full: Boolean(args?.full), manifest })) }),
+  },
+  {
+    name: 'android_provision',
+    description: 'Install or repair the shared toolchain from toolchain.manifest.json. Idempotent, sha256-pinned, serialized through the build slot.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        components: { type: 'array', items: { type: 'string' }, description: 'Component names from the manifest; default: every enabled component.' },
+        dryRun: { type: 'boolean' },
+        allowUnpinned: { type: 'boolean', description: 'Allow archives without a pinned sha256 (not recommended).' },
+      },
+      additionalProperties: false,
+    },
+    handler: async (args) => {
+      const extra = []
+      for (const component of args?.components ?? []) extra.push('--component', component)
+      if (args?.dryRun) extra.push('--dry-run')
+      if (args?.allowUnpinned) extra.push('--allow-unpinned')
+      const result = await runInSlot({
+        root,
+        cmd: process.execPath,
+        args: [PROVISIONER, ...extra],
+        owner: `provision:${process.pid}`,
+        env: buildEnv(),
+      })
+      return {
+        text: json({ exitCode: result.exitCode, busy: Boolean(result.busy), reason: result.reason, output: tail(result.stdout), errors: tail(result.stderr) }),
+        isError: !result.ok,
+      }
+    },
+  },
+  {
+    name: 'android_build',
+    description: 'Run one Gradle task through the single build slot (nice 19, pinned CPUs, wall-clock timeout, queue cap). Returns exit code plus the tail of the output.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', description: 'Gradle task, e.g. `assembleDebug` or `test`. Default: build.' },
+        tasks: { type: 'array', items: { type: 'string' }, description: 'Several tasks in one invocation.' },
+        args: { type: 'array', items: { type: 'string' }, description: 'Extra Gradle arguments, e.g. `--offline`.' },
+        cwd: { type: 'string', description: 'Project directory containing the Gradle wrapper; defaults to the broker cwd.' },
+        timeoutMs: { type: 'integer', description: 'Wall-clock cap; defaults to 1200000.' },
+        owner: { type: 'string', description: 'Label recorded in the slot holder, e.g. the issue or session name.' },
+      },
+      additionalProperties: false,
+    },
+    handler: async (args) => {
+      const gradle = binPath(root, 'gradle')
+      if (!existsSync(gradle)) {
+        return { isError: true, text: `gradle is not provisioned under ${root}. Run android_provision first.` }
+      }
+      const tasks = args?.tasks?.length ? args.tasks : [args?.task ?? 'build']
+      const result = await runInSlot({
+        root,
+        cmd: gradle,
+        args: [...tasks, ...(args?.args ?? [])],
+        cwd: args?.cwd ?? process.cwd(),
+        env: buildEnv(),
+        owner: args?.owner ?? `build:${process.pid}`,
+        timeoutMs: args?.timeoutMs,
+      })
+      return {
+        isError: !result.ok,
+        text: json({
+          exitCode: result.exitCode,
+          busy: Boolean(result.busy),
+          timedOut: Boolean(result.timedOut),
+          reason: result.reason,
+          waitedMs: result.waitedMs,
+          durationMs: result.durationMs,
+          output: tail(result.stdout),
+          errors: tail(result.stderr),
+        }),
+      }
+    },
+  },
+]
+
+function safeReadlink(path) {
+  try {
+    return readlinkSync(path)
+  } catch {
+    return null
+  }
+}
+
+serveStdio({
+  name: 'android-toolchain',
+  version: PKG.version,
+  instructions:
+    'Shared Android/JVM toolchain on this device. Call android_status first; builds go through android_build so they queue on one slot. Never run gradle directly in bash: that bypasses the slot and can OOM the device.',
+  tools,
+})
