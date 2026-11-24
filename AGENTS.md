@@ -53,6 +53,12 @@ DSH_ANDROID_ROOT=/tmp/toolchain node bin/android-broker.mjs   # 然后按 JSON-R
 8. **改性能阈值**：只在设备/DSH/工具链大版本变化或合理性能变化时更新 `bench/baselines.json`，用 `--update` 生成并 review diff；不要为过 CI 抬基线。
 9. **改失败提示**（`src/hints.mjs`）：规则必须能在失败日志里唯一命中，且不得匹配成功日志里的无害警告（如 aapt2 的 `ld.config.txt`）；补 `tests/hints.test.mjs`。
 
+## 启动器归属
+
+- `<root>/bin/<tool>`：由**实际执行 provision 的那份副本**写（从 workspace 跑 smoke 时指向 workspace，用于调试）。
+- `/usr/local/bin/<tool>`：只由 profile 里的**安装副本**写（`isInstalledCopy`）；MCP 条目经 PATH 解析到它，所以从 workspace 跑 provision/smoke 不会劫持全局启动器。
+- 发布验证后若发现全局启动器指向 workspace（历史遗留），用安装副本重跑一次 `node <plugin-src>/bin/android-provision.mjs` 即可纠正。
+
 ## 冒烟与 CI
 
 - `scripts/smoke.sh` 是唯一端到端入口：`device`（默认，含 APK）、`--jvm`（纯 Linux 基线；qemu 跑 Maven aapt2 的 `--apk-ci` 已删除，见下条）。

@@ -25,7 +25,7 @@ import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 import { MANIFEST_PATH, enabledComponents, loadManifest, probeSources, validateManifest } from '../src/manifest.mjs'
-import { binPath, currentPath, installedMarker, resolveRoot } from '../src/paths.mjs'
+import { binPath, currentPath, installedMarker, isInstalledCopy, resolveRoot } from '../src/paths.mjs'
 import { registerRoot, resolveRootRef } from '../src/roots.mjs'
 
 const PKG_DIR = fileURLToPath(new URL('..', import.meta.url))
@@ -204,12 +204,15 @@ function installToolLaunchers(root, manifest, { noLink = false } = {}) {
 
 /** Package CLIs (broker, provision, build, status, doctor) into shared bin + /usr/local/bin. */
 function installPackageLaunchers(root, { noLink = false } = {}) {
+  // A checkout that provisioned once must not hijack the machine-wide
+  // launchers: /usr/local/bin is what the MCP entry resolves through PATH.
+  const linkGlobal = !noLink && isInstalledCopy(PKG_DIR, PKG.name)
   for (const [tool, relative] of Object.entries(PKG.bin ?? {})) {
     const real = join(PKG_DIR, relative)
     if (!existsSync(real)) continue
     const body = `exec "${process.execPath}" "${real}" "$@"`
     writeLauncher(binPath(root, tool), body)
-    if (noLink) continue
+    if (!linkGlobal) continue
     try {
       writeLauncher(join('/usr/local/bin', tool), body)
     } catch {

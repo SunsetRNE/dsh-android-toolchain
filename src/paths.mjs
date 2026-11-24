@@ -7,7 +7,7 @@
  * default shared area; it falls back to `$DSH_HOME/android-toolchain` when the
  * process cannot create `/opt`.
  */
-import { accessSync, constants, existsSync, mkdirSync } from 'node:fs'
+import { accessSync, constants, existsSync, mkdirSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -88,4 +88,23 @@ export function aapt2Override(root) {
 /** Marker file that makes a component version "installed". */
 export function installedMarker(root, name, version) {
   return join(root, name, version, '.installed.json')
+}
+
+/**
+ * Is this package directory the profile's installed copy?
+ *
+ * `<root>/bin` and `/usr/local/bin` launchers are machine-wide: a checkout run
+ * from a workspace must not redirect every session's MCP entry to that
+ * checkout just because it provisioned once. Launchers from a checkout still
+ * land in `<root>/bin` (that copy owns the root it provisioned), but the global
+ * ones are reserved for the installed copy when a profile is present.
+ */
+export function isInstalledCopy(pkgDir, pkgName, env = process.env) {
+  const home = (env.DSH_HOME ?? '').trim()
+  if (!home) return true // CI or a plain container: no profile to protect
+  try {
+    return realpathSync(pkgDir) === realpathSync(join(home, 'plugin-src', pkgName))
+  } catch {
+    return false
+  }
 }
