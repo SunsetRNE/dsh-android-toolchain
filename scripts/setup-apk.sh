@@ -13,8 +13,15 @@
 # -Pandroid.aapt2FromMavenOverride=<root>/aapt2/current/bin/aapt2 automatically,
 # so no project change is needed.
 #
-# Trust: the aapt2 .deb is pinned by sha256 below; libraries come from the same
-# signed Termux repository. Re-pin deliberately when bumping AAPT2_VERSION.
+# Trust: every downloaded archive is verified before it is used —
+#   - cmdline-tools: sha256 pinned below (a Google re-release fails loudly);
+#   - aapt2: sha256 pinned below, and the resolved termux filename must match
+#     AAPT2_VERSION (an index bump cannot silently change what we run);
+#   - its dependency .debs: sha256 taken from the Termux repository index.
+# The index itself is fetched over HTTPS from the signed Termux repository;
+# sdkmanager verifies platforms/build-tools against Google's repository
+# manifests (we do not pin those, they are Java tools inside the SDK).
+# Re-pin deliberately (and re-run a real assembleDebug) when bumping versions.
 set -eu
 
 # --no-aapt2: install cmdline-tools/platform/build-tools only. Used on plain
@@ -27,6 +34,8 @@ ROOT=${DSH_ANDROID_ROOT:-/opt/android-toolchain}
 SDK="$ROOT/sdk"
 CACHE="$ROOT/tmp"
 TERMUX=https://packages.termux.dev/apt/termux-main
+CMDLINE_TOOLS_VERSION=11076708
+CMDLINE_TOOLS_SHA256=2d2d50857e4eb553af5a6dc3ad507a17adf43d115264b1afc116f95c92e5e258
 AAPT2_VERSION=16.0.0.4-4
 AAPT2_SHA256=1b3e4d716670d78fed4a66e04a1ba92827a36fe3000e9bef98208392f3100050
 AAPT2_DEPS="abseil-cpp libc++ libprotobuf fmt libexpat libpng libzopfli zlib"
@@ -44,8 +53,11 @@ export PATH="$JAVA_HOME/bin:$PATH"
 
 # 1. cmdline-tools
 if [ ! -x "$SDK/cmdline-tools/latest/bin/sdkmanager" ]; then
-  zip="$CACHE/commandlinetools-linux.zip"
-  [ -f "$zip" ] || curl -fsSL -o "$zip" "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+  zip="$CACHE/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}.zip"
+  [ -f "$zip" ] || curl -fsSL -o "$zip" "https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip"
+  # Google re-releasing this build id would break the pin loudly; re-pin
+  # deliberately after reviewing the new archive.
+  echo "$CMDLINE_TOOLS_SHA256  $zip" | sha256sum -c - >/dev/null || die "cmdline-tools sha256 mismatch: delete $zip and re-pin CMDLINE_TOOLS_*"
   say "extracting cmdline-tools"
   rm -rf "$CACHE/cmdline-tools"
   mkdir -p "$CACHE/cmdline-tools"
@@ -73,14 +85,23 @@ elif [ ! -x "$ROOT/aapt2/current/bin/aapt2" ]; then
   mkdir -p "$CACHE/termux-debs" "$CACHE/termux-x"
   fetch() {
     name=$1
+    want=${2:-}
     file=$(awk -v p="$name" '$0 == "Package: " p { found = 1 } found && /^Filename: / { print $2; exit }' "$index")
     [ -n "$file" ] || die "cannot resolve Termux package $name"
+    if [ -n "$want" ] && [ "$(basename "$file")" != "$want" ]; then
+      die "$name: index resolves to $(basename "$file"), expected $want; re-pin AAPT2_VERSION/SHA256"
+    fi
+    # The repository index carries a SHA256 per package: verify the download
+    # against it instead of trusting the URL alone.
+    sum=$(awk -v p="$name" '$0 == "Package: " p { found = 1 } found && /^SHA256: / { print $2; exit }' "$index")
+    [ -n "$sum" ] || die "no SHA256 in the Termux index for $name"
     target="$CACHE/termux-debs/$(basename "$file")"
     [ -f "$target" ] || curl -fsSL -o "$target" "$TERMUX/$file"
+    echo "$sum  $target" | sha256sum -c - >/dev/null || die "$name: sha256 mismatch against the Termux index"
     out="$CACHE/termux-x/$(basename "$file" .deb)"
     [ -d "$out" ] || { mkdir -p "$out"; dpkg-deb -x "$target" "$out"; }
   }
-  fetch aapt2
+  fetch aapt2 "aapt2_${AAPT2_VERSION}_aarch64.deb"
   deb="$CACHE/termux-debs/aapt2_${AAPT2_VERSION}_aarch64.deb"
   [ -f "$deb" ] || die "expected $deb"
   echo "$AAPT2_SHA256  $deb" | sha256sum -c - >/dev/null || die "aapt2 sha256 mismatch"

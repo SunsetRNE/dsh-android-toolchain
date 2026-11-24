@@ -69,10 +69,12 @@
 
 ## 6. 1.0 硬化
 
-- 兼容性声明与升级/回滚路径（插件升级不丢工具链、工具链升级不炸插件）
-- 安全审计：所有下载点 sha256、脚本不含动态执行、keystore 仅本地读取
-- 性能基线：冷/热构建耗时回归阈值，超阈值 CI 报警
-- 明确不支持项写入 README：npm 分发（注册受阻）、本地 NDK/C++ 编译、跨用户隔离
+- [x] 兼容性声明与升级/回滚路径（`engines.dsh`；插件与工具链分离；`docs/UPGRADING.md` 覆盖插件回滚、组件 `current` 回滚与 DSH 兼容矩阵）（1.0.0）
+- [x] 安全审计：所有下载点 sha256（新增 cmdline-tools 固定校验、Termux 依赖按索引 SHA256 校验）、脚本无 `eval`/`curl | sh`、keystore 仅本地读取且密码只走子进程环境（`docs/SECURITY.md` + `tests/security.test.mjs`）（1.0.0）
+- [x] 性能基线：冷/热构建阈值（`bench/baselines.json` + `scripts/bench.mjs`，在 `scripts/smoke.sh` 内执行，超阈值即失败 = CI 报警）（1.0.0）
+- [x] 明确不支持项写入 README：npm 分发、本地 NDK/C++、跨用户隔离、静默安装、x86_64 主机、多槽并行（1.0.0）
+
+**验收（已验证）**：测试全绿（含安全审计）、设备 smoke 含 bench 通过、manifest `--strict` 通过；回滚方向按 `docs/UPGRADING.md` 文档化，插件 `rollback` 未在活跃 profile 上实测（会改动当前环境，留待维护窗口演练）。
 
 ## 明确不做
 

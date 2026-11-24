@@ -260,7 +260,7 @@ android-build assembleDebug --cwd <你的 Android 项目>
 
 已知无害噪音：AGP 日志会出现 `AAPT2 bin Daemon #0: Unexpected error output: WARNING: linker: ... ld.config.txt`——这是 bionic loader 的提示，构建不受影响。
 
-信任边界：aapt2 的 `.deb` 在脚本里按 sha256 校验；依赖库来自同一个 Termux 签名仓库。升级 aapt2 必须同时改 `AAPT2_VERSION` 与 `AAPT2_SHA256`（`AGENTS.md` 的发布清单里有这条）。
+信任边界：cmdline-tools 与 aapt2 的 `.deb` 在脚本里按固定 sha256 校验；aapt2 的依赖库按 Termux 仓库索引里每个包的 sha256 校验。升级 aapt2 必须同时改 `AAPT2_VERSION` 与 `AAPT2_SHA256`，并跑一次真实 `assembleDebug`（详见 [SECURITY.md](docs/SECURITY.md)）。
 
 仍然不建议的路：把官方 build-tools 整个塞进来（x86_64 原生工具会 `Exec format error`），或往 `/etc/profile.d` 写环境变量（bash 工具不读 rc）。NDK（C/C++）依旧不可用，需要远程 x86_64 构建机。
 
@@ -276,6 +276,9 @@ android-build assembleDebug --cwd <你的 Android 项目>
 ## 文档与模板
 
 - [RUNBOOK.md](docs/RUNBOOK.md)：新设备从零到 APK 的完整步骤，每步带失败分支与验收清单。
+- [UPGRADING.md](docs/UPGRADING.md)：插件/工具链升级与回滚、DSH 兼容矩阵、什么不会被升级破坏。
+- [SECURITY.md](docs/SECURITY.md)：每个下载点怎么校验、脚本执行面、签名材料处理与残余风险。
+- [PERFORMANCE.md](docs/PERFORMANCE.md)：冷/热构建基线、阈值与重新基线流程。
 - [DETAIL.zh.md](docs/DETAIL.zh.md) / [DETAIL.md](docs/DETAIL.md)：插件详情页（`meta.detail`），配 [preview.svg](docs/preview.svg) 特性图。
 - 示例模板：[examples/README.md](examples/README.md)（最小 AGP app、JVM 单测，可直接复制）；[signing/README.md](examples/signing/README.md)（`signing.gradle` 签名模板，密码不进仓库）。
 
@@ -303,6 +306,16 @@ android-build assembleDebug --cwd <你的 Android 项目>
 
 明确不支持：本地 NDK/C++、官方 build-tools 里的 x86_64 原生工具、多用户/多租户隔离、静默安装（必须系统安装器 + 用户确认）。
 
+## 不支持与不做
+
+- **npm 分发**：维护者无法完成 npm 账号注册，只走 GitHub Release tarball + `SHA256SUMS`。
+- **本地 NDK / C++**：NDK 主机工具链只有 x86_64，需要时交给远程构建机。
+- **跨用户 / 多租户隔离**：单设备单维护者场景；`flock` + 文件权限足够，不做租户隔离。
+- **静默安装**：安装必须经系统安装器、由用户在设备上确认；工具只提交请求（`OK: installer` ≠ 已安装）。
+- **x86_64 主机**：JDK/Gradle 是 arm64 的，未在 x86_64 验证。
+- **官方 build-tools 的原生工具**（`aidl`、`zipalign` 等 x86_64）：不可执行；只替换了 aapt2，其余用到的都是 Java 工具。
+- **多槽并行**：槽位固定每 root 1 个；要并行请注册多个 root，并自行承担内存（见“多套工具链”）。
+
 ## 本地开发
 
 ```sh
@@ -321,9 +334,10 @@ node bin/android-provision.mjs --manifest m.json --root /tmp/x --no-link   # 用
   - 因此 **APK 路径的门禁在真机**：`sh scripts/smoke.sh`（全量模式）是发布清单的必做项。
 - 本地等价命令：
   ```sh
-  sh scripts/smoke.sh          # 真机全量（含 APK）
+  sh scripts/smoke.sh          # 真机全量（含 APK，含性能基线）
   sh scripts/smoke.sh --jvm    # 纯 Linux 可跑的基线（无 APK）
   SMOKE_WAIT_MS=900000 sh scripts/smoke.sh   # 槽位忙时排队更久
+  node scripts/bench.mjs examples/junit-project   # 单独跑冷/热基线
   ```
 - `release.yml`：打 `v*` tag → 测试 → `--verify-manifest --strict`（必须 pinned 且可达）→ `npm pack` 出 tarball + `SHA256SUMS` 附到 GitHub Release。
 - 发布链路里**没有 npm publish**，仓库也不需要 `NPM_TOKEN`；安装走 tarball（`dsha-plugin import` 解析预览 → Plugins 页确认）。

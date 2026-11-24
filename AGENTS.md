@@ -15,6 +15,7 @@
 | `index.js` | Host 插件 | 只做轻量建目录 + `DSH_ANDROID_*` facts；**不要在这里下载工具链**（阻塞 Host 启动） |
 | `tests/` | 行为契约 | 必须能在没有网络、没有 `/opt` 写权限的 CI 里跑；测试用临时根，不许碰真实共享区 |
 | `docs/` | 插件详情页与 runbook | `DETAIL*.md` 只有一行图；特性图 640×300、无文字/脚本；`meta.detail` 指向的文件必须存在，`files` 里保留 `docs` |
+| `bench/baselines.json` | 性能回归基线 | 只放实测值；改基线用 `scripts/bench.mjs --update` 并 review diff，不得为让 CI 变绿而抬高 |
 
 工具链安装在 `<root>`（默认 `/opt/android-toolchain`），**永远不要**放进 `node_modules`、profile 或 workspace。
 
@@ -28,6 +29,7 @@ node bin/android-provision.mjs --verify-manifest --strict   # 发布门禁
 node bin/android-status.mjs                  # 槽位/已装组件
 node bin/android-status.mjs --all            # 所有注册 root 的槽位/组件/limits
 node bin/android-doctor.mjs [--full]         # 架构/版本/余量诊断
+node scripts/bench.mjs examples/junit-project # 冷/热构建基线（超阈值退出 1）
 sh scripts/smoke.sh                          # 真机全量：供应+APK+JUnit+架构断言
 sh scripts/smoke.sh --jvm                    # 纯 Linux 基线：无 APK
 ```
@@ -46,6 +48,8 @@ DSH_ANDROID_ROOT=/tmp/toolchain node bin/android-broker.mjs   # 然后按 JSON-R
 4. **改 `cordis.patch.yml`**：确认 `toolCallTimeoutMs`（构建可能 20 分钟）、`failOnStartupError: false`（broker 缺失时不要拖垮启动）仍成立。
 5. **改 root 语义**（`src/roots.mjs`、`--root`、注册表）：单 root 行为必须保持不变（主 root 恒在、label `default`、无需注册表也能用）；补 `tests/roots.test.mjs`，并确认两个 root 的构建区间仍重叠。
 6. **改插件元数据/详情页**（`locale/*.json`、`docs/DETAIL*.md`、`docs/preview.svg`）：`meta.detail` 必须指向存在的一行图片文档，声明了就删不得；`files` 里保留 `docs`；跑 `tests/bundle-docs.test.mjs`。改 `engines.dsh` 等于改兼容性声明——必须在那个 DSH 版本上重跑 runbook。
+7. **改下载点/安装脚本**：新的下载必须有固定 sha256（或按上游仓库索引校验），失败要 `die` 而不是回退；同步 `docs/SECURITY.md` 的表格，跑 `tests/security.test.mjs`。脚本里禁止 `eval` 与 `curl | sh`。
+8. **改性能阈值**：只在设备/DSH/工具链大版本变化或合理性能变化时更新 `bench/baselines.json`，用 `--update` 生成并 review diff；不要为过 CI 抬基线。
 
 ## 冒烟与 CI
 
@@ -68,6 +72,7 @@ DSH_ANDROID_ROOT=/tmp/toolchain node bin/android-broker.mjs   # 然后按 JSON-R
 - [ ] `node --test tests/*.test.mjs` 全绿
 - [ ] `--verify-manifest --strict` 通过（每个 enabled 组件 pinned 且来源可达）
 - [ ] APK 脚本仍可跑：`sh scripts/setup-apk.sh` && 真实 `assembleDebug` 通过
+- [ ] bench 在设备上通过（`sh scripts/smoke.sh` 内已包含；CI 的 `smoke-arm64` 同样执行）
 - [ ] `package.json` 版本号 + `CHANGELOG`（若启用）已更新
 - [ ] 打 `vX.Y.Z` tag；release 工作流只出 tarball + `SHA256SUMS`（**不要加 npm publish**：维护者无法注册 npm）
 - [ ] 发布后在一台设备上 `dsha-plugin import <tarball>`（**只生成预览**）→ 在 Plugins 页确认安装，或 `python3 /root/.dsh/plugin-manager.py install-preview <previewId> <confirmationSha256>` → 重启 Web → 新会话里 `mcp__android__android_doctor` 架构为 `aarch64`

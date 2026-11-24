@@ -49,6 +49,9 @@ fi
 say "run the example tests"
 node bin/android-test.mjs --cwd examples/junit-project --timeout 900000 --wait "$WAIT_MS"
 
+say "performance baseline (cold/warm)"
+node scripts/bench.mjs examples/junit-project --wait-ms "$WAIT_MS"
+
 say "architecture and toolchain assertions"
 node bin/android-doctor.mjs > /tmp/android-toolchain-doctor.json
 SMOKE_MODE="$MODE" node -e '

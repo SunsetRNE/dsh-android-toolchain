@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "factor": 3,
+  "projects": {
+    "examples/junit-project": {
+      "coldMs": 17808,
+      "warmMs": 3467,
+      "recordedAt": "2026-11-24T17:57:16.932Z"
+    }
+  }
+}
