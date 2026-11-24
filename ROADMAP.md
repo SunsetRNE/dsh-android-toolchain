@@ -45,7 +45,7 @@
 - [x] 公共仓库的 `ubuntu-24.04-arm` runner：`--jvm` 阻塞基线（供应/SDK/JUnit/doctor）；APK 构建改由真机 smoke 门禁（0.4.5，qemu 路线已放弃）
 - [x] 缓存 SDK / Gradle 依赖，控制 CI 时长（1.1.0：CI 改用 runner 临时目录为 root，`actions/cache` 按 manifest 哈希缓存 JDK/Gradle/SDK/依赖；不再需要 sudo）
 - [x] manifest 变更守卫：源可达 + sha256 变化必须显式更新（已在 0.1.3 起生效）
-- [ ] 版本兼容矩阵：DSH 0.2.x 各 rc 的 MCP/插件契约
+- [x] 版本兼容矩阵：改为“只记录实际验证过的版本”，见下文维护模式（1.1.x 起；更低版本不测试）
 
 **验收**：PR 改动 `scripts/`、`toolchain.manifest.json`、`bin/` 时 CI 能真实构建成功；失败信息指向具体步骤。
 
@@ -75,6 +75,16 @@
 - [x] 明确不支持项写入 README：npm 分发、本地 NDK/C++、跨用户隔离、静默安装、x86_64 主机、多槽并行（1.0.0）
 
 **验收（已验证）**：测试全绿（含安全审计）、设备 smoke 含 bench 通过、manifest `--strict` 通过；回滚方向按 `docs/UPGRADING.md` 文档化，插件 `rollback` 未在活跃 profile 上实测（会改动当前环境，留待维护窗口演练）。
+
+## 维护模式（自 1.1.0 起）
+
+项目进入维护者模式：**不再扩展阶段**，只做修复与向后兼容的增强。
+
+- **最低基线**：DSH **0.2.2-rc.5**（`engines.dsh`）。更低版本不测试、不承诺兼容。
+- **兼容性只向上推进**：只有在某个 DSH 版本上真实验证过（runbook + `--jvm` smoke + MCP 接线 + 设备 APK）才写进矩阵；矩阵见 [docs/UPGRADING.md](docs/UPGRADING.md)。
+- **契约只增不减**：MCP 参数、CLI flag、`<root>` 布局、limits/注册表格式保持向后兼容；需要破坏性变更时先出新 major 提案，不在维护模式内自行实施。
+- **发版**：修复走 patch（1.1.x），兼容性/新能力走 minor（1.2.0）；每个版本仍走完整发布清单（测试、manifest 门禁、真机 smoke、CI）。
+- **新阶段不自动开工**：任何“下一阶段”只作为独立提案出现，需维护者明确立项。
 
 ## 明确不做
 

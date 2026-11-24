@@ -299,10 +299,12 @@ android-build assembleDebug --cwd <你的 Android 项目>
 
 | 项 | 值 |
 |---|---|
-| DSH | `engines.dsh`：**>= 0.2.2-rc.5**（在该版本上验证；更早版本未测试） |
+| DSH | `engines.dsh`：**>= 0.2.2-rc.5**（最低基线；更低版本不测试，兼容矩阵只记录验证过的版本） |
 | Node | `engines.node`：**>= 20** |
 | 平台 | linux **aarch64**（Android proot 容器已验证；x86_64 未验证） |
 | 分发 | GitHub Release tarball + `SHA256SUMS`，**不走 npm** |
+
+维护策略：自 1.1.0 起只做**向上兼容维护**——DSH 最低基线 `0.2.2-rc.5`，更低版本不测试；兼容矩阵只记录实际验证过的版本（见 [UPGRADING.md](docs/UPGRADING.md)）。
 
 明确不支持：本地 NDK/C++、官方 build-tools 里的 x86_64 原生工具、多用户/多租户隔离、静默安装（必须系统安装器 + 用户确认）。
 

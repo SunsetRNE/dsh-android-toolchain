@@ -53,6 +53,16 @@ DSH_ANDROID_ROOT=/tmp/toolchain node bin/android-broker.mjs   # 然后按 JSON-R
 8. **改性能阈值**：只在设备/DSH/工具链大版本变化或合理性能变化时更新 `bench/baselines.json`，用 `--update` 生成并 review diff；不要为过 CI 抬基线。
 9. **改失败提示**（`src/hints.mjs`）：规则必须能在失败日志里唯一命中，且不得匹配成功日志里的无害警告（如 aapt2 的 `ld.config.txt`）；补 `tests/hints.test.mjs`。
 
+## 维护模式
+
+自 1.1.0 起本仓库处于维护者模式：
+
+- 只做缺陷修复、安全修复与**向后兼容**的增强；不主动重构，不自动开新阶段。
+- 兼容性只声明**真实验证过**的 DSH 版本：`engines.dsh` 下限 = `0.2.2-rc.5`，更低版本不测试、不承诺。
+- 对外契约只增不减：MCP 参数、CLI flag、`<root>` 布局、limits / 注册表格式。
+- 发版：修复 → patch；兼容性/能力新增 → minor；仍走完整发布清单。
+- 兼容矩阵的每次更新都必须来自一次真实验证（runbook + `--jvm` smoke + MCP 调用），并写进 `docs/UPGRADING.md`。
+
 ## 启动器归属
 
 - `<root>/bin/<tool>`：由**实际执行 provision 的那份副本**写（从 workspace 跑 smoke 时指向 workspace，用于调试）。

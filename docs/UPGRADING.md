@@ -62,15 +62,15 @@ sh scripts/smoke.sh --jvm                     # 换 JDK 大版本时跑一次
 
 ## 3. DSH 升级
 
-- 兼容性声明：`package.json` 的 `engines.dsh = ">=0.2.2-rc.5"`，DSH 安装器会在安装/启用时校验（不满足直接拒绝，不会带病加载）。
-- 已验证矩阵：
+- 兼容性声明：`package.json` 的 `engines.dsh = ">=0.2.2-rc.5"`——这是**最低基线**，更低版本不测试、不承诺；DSH 安装器会在安装/启用时校验，不满足直接拒绝。
+- 已验证矩阵（**只记录真实跑过的版本**）：
 
-  | DSH | 状态 |
-  |---|---|
-  | 0.2.2-rc.5 | ✅ 已验证（0.6.0 / 1.0.0） |
-  | < 0.2.2-rc.5 | 未测试，不做承诺 |
+  | DSH | 验证范围 | 日期 |
+  |---|---|---|
+  | 0.2.2-rc.5 | 供应 + `--jvm` smoke + 真机 APK + MCP 接线（0.6.0 / 1.0.0 / 1.1.0） | 2026-11-24 |
 
-- DSH 升级后按 [RUNBOOK](RUNBOOK.md) 重跑一遍；`android-doctor` 的 `java.arch` 必须是 `aarch64`，MCP 条目必须重新挂载。
+- **只向上维护**：每次 DSH 升级后按 [RUNBOOK](RUNBOOK.md) 重跑一遍（供应 → `--jvm` smoke → 设备 APK → MCP 调用），通过才在矩阵里追加一行；不通过就把 `engines.dsh` 收紧到最后可用版本并记录原因。
+- 不测试更低版本，也不为它们做兼容分支。
 - 插件用的是 MCP stdio + `shellEnv` facts + bundle patch，这三样在 DSH 各版本间的契约变化是主要风险；升级后先跑 `--jvm` smoke。
 
 ## 4. 一次升级不丢数据的保证
