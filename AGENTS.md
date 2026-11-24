@@ -70,7 +70,7 @@ DSH_ANDROID_ROOT=/tmp/toolchain node bin/android-broker.mjs   # 然后按 JSON-R
 - [ ] APK 脚本仍可跑：`sh scripts/setup-apk.sh` && 真实 `assembleDebug` 通过
 - [ ] `package.json` 版本号 + `CHANGELOG`（若启用）已更新
 - [ ] 打 `vX.Y.Z` tag；release 工作流只出 tarball + `SHA256SUMS`（**不要加 npm publish**：维护者无法注册 npm）
-- [ ] 发布后在一台设备上 `dsha-plugin import <tarball>` 并重启 Web，新会话里 `mcp__android__android_doctor` 架构为 `aarch64`
+- [ ] 发布后在一台设备上 `dsha-plugin import <tarball>`（**只生成预览**）→ 在 Plugins 页确认安装，或 `python3 /root/.dsh/plugin-manager.py install-preview <previewId> <confirmationSha256>` → 重启 Web → 新会话里 `mcp__android__android_doctor` 架构为 `aarch64`
 
 ## 设备侧部署约定（维护者本机）
 

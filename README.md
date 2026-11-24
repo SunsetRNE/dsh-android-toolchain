@@ -37,18 +37,25 @@
 
 > **不走 npm**：本项目只在 GitHub Release 分发 tarball。原因很实际——维护者无法完成 npm 账号注册（人机验证弹窗弹不出来），所以发布链路里没有 `npm publish`。
 
-两种方式等价，都会把包装进 profile，再由包自带的 `cordis.patch.yml` 插入 `android-toolchain` Host 插件和 `android-toolchain-mcp` 客户端条目：
+两种方式都会把包装进 profile，再由包自带的 `cordis.patch.yml` 插入 `android-toolchain` Host 插件和 `android-toolchain-mcp` 客户端条目：
 
 ```sh
 # 1) 命令行导入 Release 里的 tarball（tar/zip 均可，自动找 dsh.bundle）
 gh release download --repo SunsetRNE/dsh-android-toolchain --pattern '*.tgz'
 sha256sum -c SHA256SUMS
 dsha-plugin import dsh-android-toolchain-<version>.tgz
+#    输出 PLUGIN_RESULT，含 previewId / confirmationSha256 —— 这只是预览
 
 # 2) 或 Plugins 页 → install_bundle → 选择解压后的目录
 ```
 
-导入后可 `dsha-plugin list` 确认，然后**重启 DSHA Web**。
+**`dsha-plugin import` 只解析并生成预览，不安装；重启 Web 也不会自动应用预览。** 安装有两条路：
+
+- Plugins 页里确认这个版本（正常路径）；
+- 或非交互地复用 App 自己的入口（维护者/自动化）：
+  `python3 /root/.dsh/plugin-manager.py install-preview <previewId> <confirmationSha256>`
+
+安装成功时输出 `"application": "restart-required"`；然后**重启 DSHA Web**，新会话里才是新版本（`dsha-plugin list` 可看版本号）。
 
 **安装即供应**：包的 `postinstall` 跑 `android-provision --auto`，把 `toolchain.manifest.json` 里 `enabled: true` 的组件下载、校验 sha256、解包到共享区，并安装启动器。
 
@@ -319,7 +326,7 @@ node bin/android-provision.mjs --manifest m.json --root /tmp/x --no-link   # 用
   SMOKE_WAIT_MS=900000 sh scripts/smoke.sh   # 槽位忙时排队更久
   ```
 - `release.yml`：打 `v*` tag → 测试 → `--verify-manifest --strict`（必须 pinned 且可达）→ `npm pack` 出 tarball + `SHA256SUMS` 附到 GitHub Release。
-- 发布链路里**没有 npm publish**，仓库也不需要 `NPM_TOKEN`；安装走 `dsha-plugin import`。
+- 发布链路里**没有 npm publish**，仓库也不需要 `NPM_TOKEN`；安装走 tarball（`dsha-plugin import` 解析预览 → Plugins 页确认）。
 
 ## 故障排查
 
