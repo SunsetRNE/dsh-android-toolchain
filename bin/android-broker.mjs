@@ -16,6 +16,7 @@ import { doctor } from '../src/doctor.mjs'
 import { describeAllRoots, describeRoot } from '../src/inspect.mjs'
 import { registryPath, resolveRootRef } from '../src/roots.mjs'
 import { summarize } from '../src/junit.mjs'
+import { failureHints } from '../src/hints.mjs'
 import { signApk } from '../src/signing.mjs'
 import { installApk } from '../src/install.mjs'
 import { loadManifest } from '../src/manifest.mjs'
@@ -59,6 +60,7 @@ const tools = [
       type: 'object',
       properties: {
         full: { type: 'boolean', description: 'Also run `gradle --version` (slow).' },
+        cache: { type: 'boolean', description: 'Measure cache sizes and write the report; slow on large caches (minutes). Default: reuse the last report.' },
         root: { type: 'string', description: 'Registered label or absolute path; default: the primary root.' },
       },
       additionalProperties: false,
@@ -66,7 +68,7 @@ const tools = [
     handler: async (args) => {
       try {
         const target = resolveRootRef(args?.root, { primary: root })
-        return { text: json(doctor({ root: target, full: Boolean(args?.full), manifest })) }
+        return { text: json(doctor({ root: target, full: Boolean(args?.full), cache: Boolean(args?.cache), manifest })) }
       } catch (error) {
         return { isError: true, text: error?.message ?? String(error) }
       }
@@ -158,6 +160,7 @@ const tools = [
         owner: args?.owner ?? `build:${process.pid}`,
         timeoutMs: args?.timeoutMs,
       })
+      const hints = result.ok ? [] : failureHints(`${result.stdout}\n${result.stderr}`)
       return {
         isError: !result.ok,
         text: json({
@@ -168,6 +171,7 @@ const tools = [
           reason: result.reason,
           waitedMs: result.waitedMs,
           durationMs: result.durationMs,
+          ...(hints.length ? { hints } : {}),
           output: tail(result.stdout),
           errors: tail(result.stderr),
         }),
@@ -212,6 +216,7 @@ const tools = [
         timeoutMs: args?.timeoutMs,
       })
       const summary = result.busy ? null : summarize(projectDir)
+      const hints = result.ok ? [] : failureHints(`${result.stdout}\n${result.stderr}`)
       return {
         isError: !result.ok,
         text: json({
@@ -222,6 +227,7 @@ const tools = [
           reason: result.reason,
           waitedMs: result.waitedMs,
           durationMs: result.durationMs,
+          ...(hints.length ? { hints } : {}),
           summary,
           output: tail(result.stdout),
           errors: tail(result.stderr),

@@ -83,10 +83,10 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 | 工具 | 作用 |
 |---|---|
 | `mcp__android__android_status` | 共享区、已装组件、当前 holder 与排队者、上限、最近 5 次构建；`all:true` 汇总所有 root |
-| `mcp__android__android_doctor` | java/gradle 的**真实 ELF 架构**、版本、磁盘/内存余量、供应告警 |
+| `mcp__android__android_doctor` | java/gradle 的**真实 ELF 架构**、版本、磁盘/内存余量、供应告警；`cache:true` 实测缓存体积（慢，默认读上次报告） |
 | `mcp__android__android_provision` | 按 manifest 安装/修复（幂等、校验 sha256、走单槽）；可 `register`/`reuseFrom` |
-| `mcp__android__android_build` | 跑一个/多个 Gradle task，返回退出码与输出尾部 |
-| `mcp__android__android_test` | 跑 Gradle 测试并汇总 JUnit XML：通过/失败/错误/跳过 + 失败用例名与信息 |
+| `mcp__android__android_build` | 跑一个/多个 Gradle task，返回退出码、输出尾部，失败时附**可操作提示** |
+| `mcp__android__android_test` | 跑 Gradle 测试并汇总 JUnit XML：通过/失败/错误/跳过 + 失败用例名与信息；失败时附提示 |
 | `mcp__android__android_sign` | 用 release keystore + `apksigner.jar` 签名并验证，返回证书 SHA-256 |
 | `mcp__android__android_install` | 把 APK 交给系统安装器（用户在设备上确认），可选回报当前已装版本 |
 
@@ -329,7 +329,7 @@ node bin/android-provision.mjs --manifest m.json --root /tmp/x --no-link   # 用
 ## CI / CD
 
 - `ci.yml`：Node 20/22 矩阵，跑 `node --test`，并对每个 enabled 组件做来源可达性检查。
-- `smoke-arm64.yml`：在 **`ubuntu-24.04-arm`** 上跑阻塞基线——供应工具链 → `setup-apk.sh --no-aapt2` → 编译/运行 `examples/junit-project` → 断言 java 是 aarch64、platform 与 apksigner 就位。
+- `smoke-arm64.yml`：在 **`ubuntu-24.04-arm`** 上跑阻塞基线——供应工具链 → `setup-apk.sh --no-aapt2` → 编译/运行 `examples/junit-project` → 冷/热基线（`bench/baselines.json`）→ 断言 java 是 aarch64、platform 与 apksigner 就位。工具链装在 runner 的临时目录（runner 用户可写，`actions/cache` 按 manifest 哈希缓存 JDK/Gradle/SDK/依赖）。
   - 为什么 CI 不构建 APK：我们随包的 arm64 aapt2 是 Termux 的 **bionic** 构建，需要 `/system/bin/linker64`，Ubuntu runner 没有 Android 用户态；把 Google 的 x86_64 aapt2 放到 qemu 下也止步于 runner 的 binfmt（解析不到 `/lib64/ld-linux-x86-64.so.2`）。
   - 因此 **APK 路径的门禁在真机**：`sh scripts/smoke.sh`（全量模式）是发布清单的必做项。
 - 本地等价命令：
@@ -357,3 +357,5 @@ node bin/android-provision.mjs --manifest m.json --root /tmp/x --no-link   # 用
 | `apksigner.jar not found` | 没跑过 `scripts/setup-apk.sh`，或 build-tools 缺失 |
 | 签名返回 `busy` / 退出码 75 | 单槽被别的会话占着；用 `--wait <ms>` 排更久，或看 `android_status` 的 holder |
 | `signing is not configured` | 按提示建 `<root>/signing.json`（chmod 600）或设置 `ANDROID_*` 环境变量；**不要把密码发到对话里** |
+| 磁盘吃紧 | `android-doctor --cache` 实测各目录体积并给出 `rm -rf` 建议（默认 doctor 只读上次报告，避免每次扫 5 GB） |
+| 构建失败但只有一屏 Gradle 日志 | 结果里的 `hints` / CLI 的 `[android-build] hint:` 已经把常见原因（SDK、aapt2 架构、OOM、minSdk、签名）翻译成下一步 |

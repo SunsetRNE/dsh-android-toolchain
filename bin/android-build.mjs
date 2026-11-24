@@ -12,6 +12,7 @@ import { binPath, resolveRoot } from '../src/paths.mjs'
 import { buildEnv, withAapt2Override } from '../src/env.mjs'
 import { runInSlot } from '../src/slot.mjs'
 import { resolveRootRef } from '../src/roots.mjs'
+import { failureHints } from '../src/hints.mjs'
 
 const argv = process.argv.slice(2)
 const value = (flag) => {
@@ -56,5 +57,8 @@ const result = await runInSlot({
 if (result.stdout) process.stdout.write(result.stdout)
 if (result.stderr) process.stderr.write(result.stderr)
 if (result.busy || result.reason) console.error(`[android-build] ${result.reason ?? 'busy'}`)
+if (!result.ok) {
+  for (const hint of failureHints(`${result.stdout}\n${result.stderr}`)) console.error(`[android-build] hint: ${hint}`)
+}
 console.error(`[android-build] ${result.id ?? '-'} exit ${result.exitCode} in ${Math.round((result.durationMs ?? 0) / 1000)}s`)
 process.exit(result.exitCode ?? 1)

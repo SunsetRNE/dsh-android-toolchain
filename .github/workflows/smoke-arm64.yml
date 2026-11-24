@@ -11,10 +11,13 @@ name: smoke-arm64
 #   - provisioning of the pinned JDK/Gradle on aarch64
 #   - cmdline-tools + platform + build-tools installation (setup-apk --no-aapt2)
 #   - a real Java test build and the JUnit summary path
+#   - cold/warm timing against bench/baselines.json
 #   - the doctor contract (java arch, apksigner, platform)
 #
-# The APK path itself is guarded by `sh scripts/smoke.sh` on a real device and is
-# part of the release checklist.
+# The toolchain lives in the runner's temp directory (runner-owned, so the
+# cache step works without root); the shared area on the device is /opt.
+# The APK path itself is guarded by `sh scripts/smoke.sh` on a real device and
+# is part of the release checklist.
 on:
   workflow_dispatch:
   push:
@@ -24,6 +27,7 @@ on:
       - 'src/**'
       - 'scripts/**'
       - 'examples/**'
+      - 'bench/**'
       - 'toolchain.manifest.json'
       - 'package.json'
       - '.github/workflows/smoke-arm64.yml'
@@ -33,6 +37,7 @@ on:
       - 'src/**'
       - 'scripts/**'
       - 'examples/**'
+      - 'bench/**'
       - 'toolchain.manifest.json'
       - 'package.json'
       - '.github/workflows/smoke-arm64.yml'
@@ -46,5 +51,26 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - name: Smoke (provision + SDK + JUnit + doctor)
-        run: sudo env "PATH=$PATH" "DSH_ANDROID_ROOT=/opt/android-toolchain" sh scripts/smoke.sh --jvm
+
+      # Public upstream archives, keyed by the manifest: a version bump is a
+      # new cache, everything else reuses it.
+      - name: Prepare the toolchain root
+        run: mkdir -p "$RUNNER_TEMP/android-toolchain"/{jdk,gradle,sdk,gradle-home/caches,gradle-home/wrapper}
+
+      - name: Cache the shared toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/android-toolchain/jdk
+            ${{ runner.temp }}/android-toolchain/gradle
+            ${{ runner.temp }}/android-toolchain/sdk
+            ${{ runner.temp }}/android-toolchain/gradle-home/caches
+            ${{ runner.temp }}/android-toolchain/gradle-home/wrapper
+          key: toolchain-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('toolchain.manifest.json') }}
+          restore-keys: |
+            toolchain-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Smoke (provision + SDK + JUnit + bench + doctor)
+        env:
+          DSH_ANDROID_ROOT: ${{ runner.temp }}/android-toolchain
+        run: sh scripts/smoke.sh --jvm

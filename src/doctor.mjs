@@ -5,9 +5,9 @@
  * `android_doctor` MCP tool can never disagree.
  */
 import { spawnSync } from 'node:child_process'
-import { readFileSync, readdirSync, realpathSync, statfsSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, statfsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { aapt2Override, currentPath, resolveRoot, sdkRoot } from './paths.mjs'
+import { aapt2Override, currentPath, resolveRoot, runPaths, sdkRoot } from './paths.mjs'
 import { readSlotState } from './slot.mjs'
 import { components, enabledComponents, loadManifest } from './manifest.mjs'
 import { readHistory } from './history.mjs'
@@ -55,7 +55,96 @@ function memory() {
   }
 }
 
-export function doctor({ root: rootOption, manifest = loadManifest(), full = false } = {}) {
+function formatBytes(bytes) {
+  if (bytes >= 1 << 30) return `${(bytes / (1 << 30)).toFixed(1)} GiB`
+  if (bytes >= 1 << 20) return `${Math.round(bytes / (1 << 20))} MiB`
+  return `${Math.round(bytes / 1024)} KiB`
+}
+
+/** `du -sk` (fast path, but still a full walk) — null when unavailable. */
+function directorySize(path) {
+  if (!existsSync(path)) return null
+  const result = spawnSync('du', ['-sk', path], { encoding: 'utf8', timeout: 120_000 })
+  if (result.error || result.status !== 0) return null
+  const kb = Number(String(result.stdout ?? '').trim().split(/\s+/)[0])
+  return Number.isFinite(kb) ? kb * 1024 : null
+}
+
+/**
+ * Cache sizes and cleanup suggestions. Slow on a real profile (a 3 GB Gradle
+ * cache with tens of thousands of files takes over a minute on a phone), so
+ * `doctor` only measures on demand and otherwise reuses the last report.
+ */
+export function measureCache(root) {
+  const entries = []
+  const add = (path, kind, safe, note) => {
+    const bytes = directorySize(path)
+    if (bytes !== null) entries.push({ path, kind, safe, note, bytes })
+  }
+  add(join(root, 'tmp'), 'downloads', true, '供应的临时归档与解包目录，可安全清理')
+  add(join(root, 'gradle-home', 'caches'), 'gradle-caches', false, 'Gradle 依赖/构建缓存；删除后下次构建变慢')
+  add(join(root, 'gradle-home', 'wrapper', 'dists'), 'gradle-dist', false, 'Gradle 发行版缓存；删除后会重新下载')
+  add(join(root, 'sdk'), 'sdk', false, 'Android SDK；APK 构建必需')
+  add(join(root, 'jdk'), 'jdk', false, 'JDK 版本目录')
+  add(join(root, 'gradle'), 'gradle', false, 'Gradle 版本目录')
+  add(join(root, 'aapt2'), 'aapt2', false, 'arm64 aapt2 与依赖库')
+
+  const staleVersions = []
+  for (const component of ['jdk', 'gradle', 'aapt2']) {
+    const dir = join(root, component)
+    let current = null
+    try {
+      current = readlinkSync(join(dir, 'current'))
+    } catch {}
+    let names = []
+    try {
+      names = readdirSync(dir).filter((name) => name !== 'current')
+    } catch {}
+    for (const name of names) {
+      if (name === current) continue
+      const bytes = directorySize(join(dir, name))
+      if (bytes === null) continue
+      staleVersions.push({ component, version: name, path: join(dir, name), bytes })
+    }
+  }
+
+  const totalBytes = entries.reduce((sum, entry) => sum + entry.bytes, 0)
+  const reclaimableBytes =
+    entries.filter((entry) => entry.safe).reduce((sum, entry) => sum + entry.bytes, 0) +
+    staleVersions.reduce((sum, entry) => sum + entry.bytes, 0)
+
+  const suggestions = []
+  for (const entry of entries.filter((entry) => entry.safe && entry.bytes > 0)) {
+    suggestions.push(`rm -rf ${entry.path}   # 可回收 ${formatBytes(entry.bytes)}（${entry.note}）`)
+  }
+  for (const stale of staleVersions) {
+    suggestions.push(`rm -rf ${stale.path}   # ${stale.component} 旧版本，不影响 current（可回收 ${formatBytes(stale.bytes)}）`)
+  }
+  if (suggestions.length === 0) suggestions.push('没有明显可回收的缓存')
+
+  return { measuredAt: new Date().toISOString(), totalBytes, reclaimableBytes, entries, staleVersions, suggestions }
+}
+
+function cacheReportPath(root) {
+  return join(runPaths(root).runDir, 'cache-report.json')
+}
+
+export function readCacheReport(root) {
+  try {
+    return JSON.parse(readFileSync(cacheReportPath(root), 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+function writeCacheReport(root, report) {
+  try {
+    mkdirSync(runPaths(root).runDir, { recursive: true })
+    writeFileSync(cacheReportPath(root), `${JSON.stringify(report, null, 2)}\n`)
+  } catch {}
+}
+
+export function doctor({ root: rootOption, manifest = loadManifest(), full = false, cache = false } = {}) {
   const root = rootOption ?? resolveRoot({})
   const state = readSlotState(root)
   const installed = {}
@@ -121,6 +210,18 @@ export function doctor({ root: rootOption, manifest = loadManifest(), full = fal
     gradleDaemons = Number((pgrep.stdout ?? '').trim() || '0')
   } catch {}
 
+  let cacheReport
+  if (cache) {
+    const measured = measureCache(root)
+    cacheReport = { ...measured, source: 'live' }
+    writeCacheReport(root, measured)
+  } else {
+    const cached = readCacheReport(root)
+    cacheReport = cached
+      ? { ...cached, source: 'cached' }
+      : { source: 'missing', note: 'run `android-doctor --cache` to measure (slow on large caches)' }
+  }
+
   return {
     root,
     limits: state.limits,
@@ -128,6 +229,7 @@ export function doctor({ root: rootOption, manifest = loadManifest(), full = fal
     gradleDaemons,
     recentBuilds: readHistory(root, 3),
     slot: state,
+    cache: cacheReport,
     components: installed,
     checks,
     disk,

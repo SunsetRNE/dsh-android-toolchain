@@ -59,6 +59,7 @@ try {
 }
 
 if (result.output) console.error(result.output)
+for (const hint of result.hints ?? []) console.error(`[android-sign] hint: ${hint}`)
 console.error(`[android-sign] ${result.signBuildId ?? '-'} -> ${result.out} verified=${result.verified ?? false}${result.reason ? ` (${result.reason})` : ''}`)
 console.log(JSON.stringify(result, null, 2))
 process.exit(result.ok ? 0 : result.exitCode ?? 1)

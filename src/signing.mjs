@@ -17,6 +17,7 @@ import { basename, dirname, join } from 'node:path'
 import { sdkRoot } from './paths.mjs'
 import { buildEnv } from './env.mjs'
 import { runInSlot } from './slot.mjs'
+import { failureHints } from './hints.mjs'
 
 const KS_PASS_ENV = 'ANDROID_KS_PASS'
 const KEY_PASS_ENV = 'ANDROID_KEY_PASS'
@@ -176,6 +177,7 @@ export async function signApk({ root, apk, out, keystore, alias, timeoutMs, wait
       exitCode: sign.exitCode,
       reason: sign.busy ? sign.reason ?? 'slot busy' : sign.timedOut ? 'sign timed out' : 'sign failed',
       output: `${sign.stdout}\n${sign.stderr}`.trim(),
+      hints: failureHints(`${sign.stdout}\n${sign.stderr}`),
       signBuildId: sign.id,
     }
   }
@@ -197,5 +199,6 @@ export async function signApk({ root, apk, out, keystore, alias, timeoutMs, wait
     signBuildId: sign.id,
     verifyBuildId: verify.id,
     reason: verify.ok ? undefined : 'verify failed',
+    ...(verify.ok ? {} : { hints: failureHints(`${verify.stdout}\n${verify.stderr}`) }),
   }
 }

@@ -23,7 +23,7 @@
 - [x] `android-build` CLI 输出 build id，便于和日志对齐
 - [x] `doctor` 增加：Gradle daemon 数量、最近 3 条构建
 - [x] 状态归一（`ok` / `failed` / `timeout` / `busy` / `queue-full` / `error`），文档化
-- [ ] `doctor` 缓存体积统计与清理建议（下一轮）
+- [x] `doctor` 缓存体积统计与清理建议（1.1.0：`--cache` 实测并写入 `<root>/run/cache-report.json`，默认读缓存报告，避免每次扫 5 GB）
 
 **验收**：并发 5 个构建（3 个排队、2 个被拒）后，`android_status.recent` 能完整还原这 5 条，且每条可定位到 owner 与结果。
 
@@ -34,7 +34,7 @@
 - [x] `android_test`：Gradle `test`（JVM 单测），走同一槽位，汇总 JUnit XML（0.3.0）
 - [x] `android_sign`：release keystore（路径 + 别名从环境/凭据读取，**不进日志**）、`apksigner.jar` 签名与验证（0.3.1）
 - [x] `android_install`：经 App 桥交给系统安装器（用户确认），禁止 `pm` 直连与静默安装（0.3.4）
-- [ ] 失败时给出可操作错误（未授权 adb、签名不匹配、minSdk 冲突）
+- [x] 失败时给出可操作错误（1.1.0：`src/hints.mjs` 覆盖 SDK 缺失、aapt2 架构、OOM、依赖解析、minSdk、签名、安装签名冲突、磁盘；MCP 返回 `hints`，CLI 打印 `hint:`）
 
 **验收**：一条命令完成 `assembleDebug → sign → install → 启动`，且 `android_status` 有对应记录；keystore 不在日志/仓库中出现。
 
@@ -43,7 +43,7 @@
 **为什么**：APK 路径（aapt2 包装、SDK 布局、脚本）目前没有自动化守卫，改坏只能靠人肉发现。
 
 - [x] 公共仓库的 `ubuntu-24.04-arm` runner：`--jvm` 阻塞基线（供应/SDK/JUnit/doctor）；APK 构建改由真机 smoke 门禁（0.4.5，qemu 路线已放弃）
-- [ ] 缓存 SDK / Gradle 依赖，控制 CI 时长（root 属主的 `/opt` 与 actions/cache 的 runner 用户不兼容，暂缓）
+- [x] 缓存 SDK / Gradle 依赖，控制 CI 时长（1.1.0：CI 改用 runner 临时目录为 root，`actions/cache` 按 manifest 哈希缓存 JDK/Gradle/SDK/依赖；不再需要 sudo）
 - [x] manifest 变更守卫：源可达 + sha256 变化必须显式更新（已在 0.1.3 起生效）
 - [ ] 版本兼容矩阵：DSH 0.2.x 各 rc 的 MCP/插件契约
 

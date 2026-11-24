@@ -29,6 +29,7 @@ node bin/android-provision.mjs --verify-manifest --strict   # 发布门禁
 node bin/android-status.mjs                  # 槽位/已装组件
 node bin/android-status.mjs --all            # 所有注册 root 的槽位/组件/limits
 node bin/android-doctor.mjs [--full]         # 架构/版本/余量诊断
+node bin/android-doctor.mjs --cache          # 实测缓存体积并写入 run/cache-report.json（慢）
 node scripts/bench.mjs examples/junit-project # 冷/热构建基线（超阈值退出 1）
 sh scripts/smoke.sh                          # 真机全量：供应+APK+JUnit+架构断言
 sh scripts/smoke.sh --jvm                    # 纯 Linux 基线：无 APK
@@ -50,6 +51,7 @@ DSH_ANDROID_ROOT=/tmp/toolchain node bin/android-broker.mjs   # 然后按 JSON-R
 6. **改插件元数据/详情页**（`locale/*.json`、`docs/DETAIL*.md`、`docs/preview.svg`）：`meta.detail` 必须指向存在的一行图片文档，声明了就删不得；`files` 里保留 `docs`；跑 `tests/bundle-docs.test.mjs`。改 `engines.dsh` 等于改兼容性声明——必须在那个 DSH 版本上重跑 runbook。
 7. **改下载点/安装脚本**：新的下载必须有固定 sha256（或按上游仓库索引校验），失败要 `die` 而不是回退；同步 `docs/SECURITY.md` 的表格，跑 `tests/security.test.mjs`。脚本里禁止 `eval` 与 `curl | sh`。
 8. **改性能阈值**：只在设备/DSH/工具链大版本变化或合理性能变化时更新 `bench/baselines.json`，用 `--update` 生成并 review diff；不要为过 CI 抬基线。
+9. **改失败提示**（`src/hints.mjs`）：规则必须能在失败日志里唯一命中，且不得匹配成功日志里的无害警告（如 aapt2 的 `ld.config.txt`）；补 `tests/hints.test.mjs`。
 
 ## 冒烟与 CI
 

@@ -12,6 +12,7 @@ import { buildEnv, withAapt2Override } from '../src/env.mjs'
 import { runInSlot } from '../src/slot.mjs'
 import { summarize } from '../src/junit.mjs'
 import { resolveRootRef } from '../src/roots.mjs'
+import { failureHints } from '../src/hints.mjs'
 
 const argv = process.argv.slice(2)
 const value = (flag) => {
@@ -60,6 +61,9 @@ console.error(
   `[android-test] ${result.id ?? '-'} exit ${result.exitCode} in ${Math.round((result.durationMs ?? 0) / 1000)}s` +
     (summary ? ` tests=${summary.tests} failures=${summary.failures} errors=${summary.errors} skipped=${summary.skipped}` : ' (did not run)'),
 )
+if (!result.ok) {
+  for (const hint of failureHints(`${result.stdout}\n${result.stderr}`)) console.error(`[android-test] hint: ${hint}`)
+}
 if (summary) {
   for (const failure of summary.failing) {
     console.error(`[android-test] FAIL ${failure.classname || failure.suite} > ${failure.test}: ${failure.message.split('\n')[0]}`)
