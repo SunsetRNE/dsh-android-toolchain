@@ -1,6 +1,7 @@
 {
   "meta": {
     "title": "Android/JVM 工具链",
-    "description": "共享一套 arm64 JDK + Gradle 工具链，所有构建走同一个排队槽位，避免多会话并发把设备内存打爆。"
+    "description": "把一套 arm64 JDK + Gradle 装进共享区，所有 Gradle 构建按 root 走各自的单槽排队，避免并发会话把设备内存打爆。用 android MCP 工具（先 android_status）或 android-build CLI；可注册第二个 root 获得独立槽位。只做本地 JVM/AGP 构建，NDK/C++ 仍需远程 x86_64 构建机。",
+    "detail": "docs/DETAIL.zh.md"
   }
 }

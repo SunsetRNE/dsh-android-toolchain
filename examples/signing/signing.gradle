@@ -1,0 +1,45 @@
+// Optional release signing for a project built on this device.
+//
+// Copy to your project root and reference it from app/build.gradle, after the
+// com.android.application plugin block:
+//
+//     apply from: "$rootDir/signing.gradle"
+//
+// Secrets live in keystore.properties (gitignored, chmod 600) or in the
+// environment, never in the repository. For agent-driven builds prefer
+// `android-sign` with <root>/signing.json (see docs/RUNBOOK.md): the keystore
+// does not have to sit inside the project at all.
+
+import java.util.Properties
+
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+
+def ksPath = keystoreProperties['storeFile'] ?: System.getenv('ANDROID_KEYSTORE')
+def ksPassword = keystoreProperties['storePassword'] ?: System.getenv('ANDROID_KEYSTORE_PASSWORD')
+def ksAlias = keystoreProperties['keyAlias'] ?: System.getenv('ANDROID_KEY_ALIAS')
+def ksKeyPassword = keystoreProperties['keyPassword'] ?: System.getenv('ANDROID_KEY_PASSWORD') ?: ksPassword
+def configured = ksPath && ksPassword && ksAlias
+
+android {
+    signingConfigs {
+        release {
+            if (configured) {
+                storeFile file(ksPath)
+                storePassword ksPassword
+                keyAlias ksAlias
+                keyPassword ksKeyPassword
+            }
+        }
+    }
+    buildTypes {
+        release {
+            if (configured) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+}

@@ -60,12 +60,12 @@
 
 ## 5. 文档与生态（0.6）
 
-- [ ] `docs/DETAIL.zh.md` + `DETAIL.md` + 640×300 特性图（工具卡详情页）
-- [ ] 示例工程仓库（最小 AGP app、JVM 单测、签名配置）作为可复制的模板
-- [ ] 从零到 APK 的完整 runbook（含失败排查分支）
-- [ ] 与 `dsh-doc` 一致的能力声明（`dsh` 版本范围、配置项说明）
+- [x] `docs/DETAIL.zh.md` + `DETAIL.md` + 640×300 特性图（工具卡详情页，`meta.detail`）（0.6.0）
+- [x] 示例模板：`examples/` 的最小 AGP app、JVM 单测、`examples/signing` 签名模板；随包分发，不单开仓库（0.6.0）
+- [x] 从零到 APK 的 runbook（含失败分支与验收清单）：`docs/RUNBOOK.md`（0.6.0）
+- [x] 与 `dsh-doc` 一致的能力声明：`engines.dsh` / `engines.node`、README 兼容性与配置表（0.6.0）
 
-**验收**：新设备按 runbook 从零到 `assembleDebug` 成功，全程不需要读源码。
+**验收（已验证）**：本机按 runbook 执行第 0–6、8–9 步通过——供应 → `assembleDebug` → JUnit → 真实签名（`verified=true`）→ 多 root → 验收断言；第 7 步安装由用户在系统安装器确认，属设计行为。
 
 ## 6. 1.0 硬化
 

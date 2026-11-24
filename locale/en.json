@@ -1,6 +1,7 @@
 {
   "meta": {
     "title": "Android/JVM toolchain",
-    "description": "Shares one arm64 JDK + Gradle toolchain and runs every build through a single queued slot, so parallel agent sessions cannot exhaust the device."
+    "description": "Shares one arm64 JDK + Gradle toolchain and runs every Gradle build through a queued single slot per root, so parallel agent sessions cannot exhaust the device. Use the android MCP tools (android_status first) or the android-build CLI; register a second root for its own slot. Local JVM/AGP builds only: NDK/C++ still needs a remote x86_64 builder.",
+    "detail": "docs/DETAIL.md"
   }
 }

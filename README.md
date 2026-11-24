@@ -266,15 +266,35 @@ android-build assembleDebug --cwd <你的 Android 项目>
 - ❌ 官方 SDK `build-tools` 里的其它**原生**工具（`aidl`、`zipalign` 等 x86_64）和 NDK 主机工具链仍然执行不了；manifest 里 `sdk`/`ndk` 默认关闭并写明原因（SDK 由 `setup-apk.sh` 以 Java 工具方式提供）；
 - ❌ 用 `aidl` 的项目、需要 NDK 的原生模块：交给远程 x86_64 构建机。
 
+## 文档与模板
+
+- [RUNBOOK.md](docs/RUNBOOK.md)：新设备从零到 APK 的完整步骤，每步带失败分支与验收清单。
+- [DETAIL.zh.md](docs/DETAIL.zh.md) / [DETAIL.md](docs/DETAIL.md)：插件详情页（`meta.detail`），配 [preview.svg](docs/preview.svg) 特性图。
+- 示例模板：[examples/README.md](examples/README.md)（最小 AGP app、JVM 单测，可直接复制）；[signing/README.md](examples/signing/README.md)（`signing.gradle` 签名模板，密码不进仓库）。
+
 ## 配置
 
-| 变量 | 作用 |
+| 变量 / 文件 | 作用 |
 |---|---|
 | `DSH_ANDROID_ROOT` | 共享区根目录（默认 `/opt/android-toolchain`，不可写时回退 `$DSH_HOME/android-toolchain`） |
 | `DSH_ANDROID_PROVISION=off` | 跳过 postinstall 供应 |
+| `DSH_ANDROID_LIMITS` | 指向另一份 limits.json（默认 `<root>/limits.json`），见“调上限” |
+| `DSH_ANDROID_REGISTRY` | root 注册表位置（默认 `<root>/roots.json`），见“多套工具链” |
+| `ANDROID_KEYSTORE` / `ANDROID_KEY_ALIAS` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_PASSWORD` | 签名身份（也可用 `<root>/signing.json`）；密码只经子进程环境传递 |
 | `toolchain.manifest.json` | 组件、版本、来源、sha256、Gradle 默认参数——唯一供应链 |
 
 `android-provision --pin --write` 会下载并回填 sha256；**发布前必须 pin**（release 工作流用 `--strict` 卡住）。
+
+## 兼容性
+
+| 项 | 值 |
+|---|---|
+| DSH | `engines.dsh`：**>= 0.2.2-rc.5**（在该版本上验证；更早版本未测试） |
+| Node | `engines.node`：**>= 20** |
+| 平台 | linux **aarch64**（Android proot 容器已验证；x86_64 未验证） |
+| 分发 | GitHub Release tarball + `SHA256SUMS`，**不走 npm** |
+
+明确不支持：本地 NDK/C++、官方 build-tools 里的 x86_64 原生工具、多用户/多租户隔离、静默安装（必须系统安装器 + 用户确认）。
 
 ## 本地开发
 

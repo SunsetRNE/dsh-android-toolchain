@@ -14,6 +14,7 @@
 | `cordis.patch.yml` | Host 平面接线 | 只插入 `android-toolchain`（shell-env facts）和 `android-toolchain-mcp`（stdio MCP）两行 |
 | `index.js` | Host 插件 | 只做轻量建目录 + `DSH_ANDROID_*` facts；**不要在这里下载工具链**（阻塞 Host 启动） |
 | `tests/` | 行为契约 | 必须能在没有网络、没有 `/opt` 写权限的 CI 里跑；测试用临时根，不许碰真实共享区 |
+| `docs/` | 插件详情页与 runbook | `DETAIL*.md` 只有一行图；特性图 640×300、无文字/脚本；`meta.detail` 指向的文件必须存在，`files` 里保留 `docs` |
 
 工具链安装在 `<root>`（默认 `/opt/android-toolchain`），**永远不要**放进 `node_modules`、profile 或 workspace。
 
@@ -44,6 +45,7 @@ DSH_ANDROID_ROOT=/tmp/toolchain node bin/android-broker.mjs   # 然后按 JSON-R
 3. **加 MCP 工具**：在 `bin/android-broker.mjs` 的 `tools` 里加 schema + handler，补 `tests/mcp.test.mjs` 的 `tools/list` 断言，更新 README 工具表。
 4. **改 `cordis.patch.yml`**：确认 `toolCallTimeoutMs`（构建可能 20 分钟）、`failOnStartupError: false`（broker 缺失时不要拖垮启动）仍成立。
 5. **改 root 语义**（`src/roots.mjs`、`--root`、注册表）：单 root 行为必须保持不变（主 root 恒在、label `default`、无需注册表也能用）；补 `tests/roots.test.mjs`，并确认两个 root 的构建区间仍重叠。
+6. **改插件元数据/详情页**（`locale/*.json`、`docs/DETAIL*.md`、`docs/preview.svg`）：`meta.detail` 必须指向存在的一行图片文档，声明了就删不得；`files` 里保留 `docs`；跑 `tests/bundle-docs.test.mjs`。改 `engines.dsh` 等于改兼容性声明——必须在那个 DSH 版本上重跑 runbook。
 
 ## 冒烟与 CI
 
