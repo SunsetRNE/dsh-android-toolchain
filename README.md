@@ -227,7 +227,7 @@ android-install app-signed.apk --package com.example.hello
 
 ## 已验证（本机 aarch64 proot）
 
-- Temurin **21.0.5+11 (aarch64)** + Gradle **8.10.2**：`android-build build` 跑通一个真实 Java 项目（`BUILD SUCCESSFUL`，15 s）
+- Temurin **21.0.5+11 (aarch64)** + Gradle **9.1.0**：`android-build test` 跑通一个真实 Java 项目（`BUILD SUCCESSFUL`，约 7 s）
 - 同一个构建经 `mcp__android__android_build` 调用成功（MCP 客户端 → broker → 单槽 → Gradle，2.7 s 增量）
 - `android-doctor` 报告 `java arch = aarch64`、槽位空闲
 - 多 root（0.5.1）：`android-status --all` 聚合两个 root 的组件/槽位/limits；`tests/slot.test.mjs` 用作业内时间戳证明两个 root 的构建区间**重叠**（互不排队）
@@ -249,13 +249,13 @@ android-build assembleDebug --cwd <你的 Android 项目>
    `/system/bin/linker64` + `LD_LIBRARY_PATH=<prefix>/lib`（Termux 的 aapt2 是 bionic 链接，proot 里必须这样跑）
 4. `android-build` 自动追加 `-Pandroid.aapt2FromMavenOverride=<root>/aapt2/current/bin/aapt2`
 
-本机实测（2026-11-23）：
+本机实测（2026-11-25，Gradle 9.1.0）：
 
 | 项 | 值 |
 |---|---|
 | 项目 | 最小 `com.android.application`（compileSdk 35 / minSdk 24，无第三方依赖） |
-| 工具 | AGP **8.7.3**、Gradle **8.10.2**、JDK **21.0.5**、aapt2 `2.20-android-16.0.0_r4` |
-| 结果 | `BUILD SUCCESSFUL`，冷构建 2 min 1 s（含依赖下载），产物 `app-debug.apk` 5.6 KB |
+| 工具 | AGP **8.7.3**、Gradle **9.1.0**、JDK **21.0.5**、aapt2 `2.20-android-16.0.0_r4` |
+| 结果 | `BUILD SUCCESSFUL`，冷构建 1 min 5 s（Gradle 9 首次 + 依赖解析），产物 `app-debug.apk` 5.6 KB |
 | 校验 | `aapt2 dump badging` 显示 `package=com.example.hello`、`minSdk 24`、`targetSdk 35`；`apksigner.jar verify` 通过 |
 
 已知无害噪音：AGP 日志会出现 `AAPT2 bin Daemon #0: Unexpected error output: WARNING: linker: ... ld.config.txt`——这是 bionic loader 的提示，构建不受影响。

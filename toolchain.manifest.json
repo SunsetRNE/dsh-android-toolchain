@@ -16,14 +16,14 @@
     },
     "gradle": {
       "enabled": true,
-      "version": "8.10.2",
-      "source": "https://services.gradle.org/distributions/gradle-8.10.2-bin.zip",
+      "version": "9.1.0",
+      "source": "https://services.gradle.org/distributions/gradle-9.1.0-bin.zip",
       "archive": "zip",
-      "sha256": "31c55713e40233a8303827ceb42ca48a47267a0ad4bab9177123121e71524c26",
+      "sha256": "a17ddd85a26b6a7f5ddb71ff8b05fc5104c0202c6e64782429790c933686c806",
       "provides": [
         "gradle"
       ],
-      "notes": "Gradle runs on any host JVM; only the JVM must be arm64."
+      "notes": "Gradle runs on any host JVM; only the JVM must be arm64. 9.1.0 needs JDK 17+ (shared JDK 21); AGP 8.7.3 and the plain-Java example are verified on it."
     },
     "kotlin": {
       "enabled": false,

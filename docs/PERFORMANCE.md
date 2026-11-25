@@ -26,11 +26,11 @@ node scripts/bench.mjs examples/junit-project --update   # 重新记录基线（
 
 ## 已记录基线
 
-设备：aarch64 proot，JDK 21.0.5+11，Gradle 8.10.2（2026-11-24）
+设备：aarch64 proot，JDK 21.0.5+11，Gradle 9.1.0（2026-11-25）
 
 | 项目 | 冷 | 热 |
 |---|---|---|
-| `examples/junit-project` | **17.8 s** | **3.5 s** |
+| `examples/junit-project` | **15.8 s** | **3.1 s** |
 | `examples/hello-apk` | 约 2 min（含 AGP 依赖下载，见 README 实测表） | 约 39 s（缓存命中） |
 
 ## 重新基线的规则

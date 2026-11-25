@@ -7,7 +7,7 @@
 | 下载点 | 来源 | 完整性校验 | 失败行为 | 残余风险 |
 |---|---|---|---|---|
 | JDK 21.0.5+11 (aarch64) | Adoptium API | `toolchain.manifest.json` 的 sha256；未 pin 拒绝安装 | sha256 不匹配即中止，不落盘 | 上游重发需 `--pin --write` + 人工 review；信任 Adoptium |
-| Gradle 8.10.2 | services.gradle.org | 同上 | 同上 | 同上 |
+| Gradle 9.1.0 | services.gradle.org | 同上 | 同上 | 同上 |
 | cmdline-tools 11076708 | dl.google.com | `CMDLINE_TOOLS_SHA256`（`scripts/setup-apk.sh`） | 不匹配即 `die`，不导入 | Google 重发布同 build id 会让安装失败（需重新 pin，不会静默换包） |
 | platform 35 / build-tools 35 | Google SDK 仓库（sdkmanager） | sdkmanager 校验仓库 manifest 的校验和 | sdkmanager 报错退出 | 本仓库未单独 pin；依赖 Google 签名仓库 + HTTPS |
 | aapt2 16.0.0.4-4 | Termux 仓库 | `AAPT2_SHA256`，且索引解析出的**文件名必须等于** `aapt2_<AAPT2_VERSION>_aarch64.deb` | 不匹配或索引版本变化即 `die` | 需人工更新 `AAPT2_VERSION` + `AAPT2_SHA256` |

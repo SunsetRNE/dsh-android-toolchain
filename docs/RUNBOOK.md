@@ -39,7 +39,7 @@ android-provision          # 幂等，失败可重跑
 android-doctor | grep -m1 '"arch"'   # 期望 "arch": "aarch64"
 ```
 
-期望：`jdk@21.0.5+11: installed`、`gradle@8.10.2: installed`、`launchers: <root>/bin`。
+期望：`jdk@21.0.5+11: installed`、`gradle@9.1.0: installed`、`launchers: <root>/bin`。
 
 | 失败分支 | 处理 |
 |---|---|
