@@ -60,6 +60,8 @@ sh scripts/smoke.sh --jvm                     # 换 JDK 大版本时跑一次
 
 回滚工具链不需要重启 Web：每次构建都现算 `JAVA_HOME=<root>/jdk/current`，下一次调用即生效。
 
+**当前版本记录（2026-11-25）**：Gradle **9.1.0**（JDK 21.0.5+11 满足其 JDK 17+ 要求，AGP 8.7.3 与纯 Java 示例均已验证）。构建时 AGP 8.7.3 会提示使用了 Gradle 10 将移除的 API——升级到 Gradle 10 前需要同步升 AGP，届时按上面的流程重新验证。
+
 ## 3. DSH 升级
 
 - 兼容性声明：`package.json` 的 `engines.dsh = ">=0.2.2-rc.5"`——这是**最低基线**，更低版本不测试、不承诺；DSH 安装器会在安装/启用时校验，不满足直接拒绝。
