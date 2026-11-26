@@ -104,6 +104,7 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 | 优先级 | `nice 19` | 不抢前台 |
 | CPU | `taskset -c 0-3` | 给 UI 留核 |
 | JVM | `-Xmx1536m`、Metaspace 512m、`--max-workers=2`、`parallel=false` | 写进共享 `gradle.properties`；AGP 比纯 JVM 编译更吃内存 |
+| Gradle daemon 空闲退出 | **2 分钟**（`org.gradle.daemon.idletimeout=120000`） | 构建后 daemon 很快自行退出，减少后台驻留内存，降低被手机系统判定为后台大户的概率；代价是间隔较久的下一次构建多几秒启动 |
 | 不用 `RLIMIT_AS` | — | JVM 需要大段虚拟地址空间，`prlimit --as` 会让它起不来；内存靠 `-Xmx` + 单槽 |
 
 `android_status` 的 `holder.json` 里记录了 owner（会话/调用方标签）、pid、开始时间，谁占着槽一目了然。
