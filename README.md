@@ -83,6 +83,7 @@ dsha-plugin import dsh-android-toolchain-<version>.tgz
 | 工具 | 作用 |
 |---|---|
 | `mcp__android__android_status` | 共享区、已装组件、当前 holder 与排队者、上限、最近 5 次构建；`all:true` 汇总所有 root |
+| `mcp__android__android_guide` | 按需返回使用说明（overview / build / roots / limits / sign / install / troubleshooting / docs）；不调用就不占用上下文 |
 | `mcp__android__android_doctor` | java/gradle 的**真实 ELF 架构**、版本、磁盘/内存余量、供应告警；`cache:true` 实测缓存体积（慢，默认读上次报告） |
 | `mcp__android__android_provision` | 按 manifest 安装/修复（幂等、校验 sha256、走单槽）；可 `register`/`reuseFrom` |
 | `mcp__android__android_build` | 跑一个/多个 Gradle task，返回退出码、输出尾部，失败时附**可操作提示** |

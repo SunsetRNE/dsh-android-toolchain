@@ -58,7 +58,7 @@ test('broker speaks MCP: initialize, tools/list, tools/call', async () => {
 
     const listed = await request('tools/list', {})
     const names = listed.result.tools.map((tool) => tool.name).sort()
-    assert.deepEqual(names, ['android_build', 'android_doctor', 'android_install', 'android_provision', 'android_sign', 'android_status', 'android_test'])
+    assert.deepEqual(names, ['android_build', 'android_doctor', 'android_guide', 'android_install', 'android_provision', 'android_sign', 'android_status', 'android_test'])
     for (const tool of listed.result.tools) assert.equal(tool.inputSchema.type, 'object')
 
     const status = await request('tools/call', { name: 'android_status', arguments: {} })
@@ -75,6 +75,14 @@ test('broker speaks MCP: initialize, tools/list, tools/call', async () => {
     const unknown = await request('tools/call', { name: 'android_status', arguments: { root: 'ghost' } })
     assert.equal(unknown.result.isError, true)
     assert.match(unknown.result.content[0].text, /unknown root "ghost"/)
+
+    const guide = await request('tools/call', { name: 'android_guide', arguments: { topic: 'build' } })
+    assert.equal(guide.result.isError, undefined)
+    assert.match(guide.result.content[0].text, /android_build/)
+    assert.match(guide.result.content[0].text, /Available topics: overview, build/)
+
+    const fallback = await request('tools/call', { name: 'android_guide', arguments: { topic: 'nope' } })
+    assert.match(fallback.result.content[0].text, /overview|Available topics/)
   } finally {
     child.kill('SIGKILL')
   }

@@ -17,11 +17,13 @@ import { describeAllRoots, describeRoot } from '../src/inspect.mjs'
 import { registryPath, resolveRootRef } from '../src/roots.mjs'
 import { summarize } from '../src/junit.mjs'
 import { failureHints } from '../src/hints.mjs'
+import { loadGuide } from '../src/guide.mjs'
 import { signApk } from '../src/signing.mjs'
 import { installApk } from '../src/install.mjs'
 import { loadManifest } from '../src/manifest.mjs'
 
 const PKG = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+const PKG_DIR = fileURLToPath(new URL('..', import.meta.url))
 const root = resolveRoot({ create: true })
 const manifest = loadManifest()
 const PROVISIONER = fileURLToPath(new URL('./android-provision.mjs', import.meta.url))
@@ -48,6 +50,27 @@ const tools = [
         if (args?.all) return { text: json(describeAllRoots(root, { recent: 5, manifest })) }
         const target = resolveRootRef(args?.root, { primary: root })
         return { text: json({ ...describeRoot(target, { manifest }), registry: registryPath(root) }) }
+      } catch (error) {
+        return { isError: true, text: error?.message ?? String(error) }
+      }
+    },
+  },
+  {
+    name: 'android_guide',
+    description: 'Return on-demand usage instructions for this toolchain. Topics: overview, build, roots, limits, sign, install, troubleshooting, docs. Nothing is injected into the session until this tool is called.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        topic: { type: 'string', description: 'One of the topics; omit for the overview.' },
+      },
+      additionalProperties: false,
+    },
+    handler: async (args) => {
+      try {
+        const guide = loadGuide(PKG_DIR, args?.topic)
+        const note = guide.note ? `${guide.note}\n\n` : ''
+        const header = guide.topic ? `# ${guide.topic}\n\n` : ''
+        return { text: `${note}${header}${guide.text}\n\nAvailable topics: ${guide.topics.join(', ')}` }
       } catch (error) {
         return { isError: true, text: error?.message ?? String(error) }
       }

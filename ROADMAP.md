@@ -84,6 +84,7 @@
 - **兼容性只向上推进**：只有在某个 DSH 版本上真实验证过（runbook + `--jvm` smoke + MCP 接线 + 设备 APK）才写进矩阵；矩阵见 [docs/UPGRADING.md](docs/UPGRADING.md)。
 - **契约只增不减**：MCP 参数、CLI flag、`<root>` 布局、limits/注册表格式保持向后兼容；需要破坏性变更时先出新 major 提案，不在维护模式内自行实施。
 - **发版**：修复走 patch（1.1.x），兼容性/新能力走 minor（1.2.0）；每个版本仍走完整发布清单（测试、manifest 门禁、真机 smoke、CI）。
+- **使用说明按需返回**：MCP 工具 `android_guide` 按 topic 读取 `docs/GUIDE.md`；不做常驻 skill 注入，也不另起一个 MCP 服务（手机不欢迎多一个常驻进程）。
 - **新阶段不自动开工**：任何“下一阶段”只作为独立提案出现，需维护者明确立项。
 
 ## 明确不做
